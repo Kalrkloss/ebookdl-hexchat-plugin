@@ -33,6 +33,11 @@ import json
 import time
 import shutil
 import zipfile
+import tarfile
+import gzip
+import bz2
+import lzma
+import subprocess
 import threading
 import queue
 
@@ -371,26 +376,108 @@ def unique_path(directory, filename):
 def move_to_target(src, target_dir, unzip):
     """
     Fertige DCC-Datei in den Zielordner verschieben (optional entpacken).
+
+    Es werden NUR echte Archive entpackt (Erkennung über die Dateiendung):
+    zip, 7z, rar, tar/tar.gz/tar.bz2/tar.xz/tgz, cab, iso, arj, lzh sowie
+    einzeln komprimierte Dateien (gz, bz2, xz). E-Book-Formate wie EPUB
+    (technisch eine ZIP-Datei) bleiben unangetastet.
     Gibt (finaler_pfad, hinweis) oder wirft OSError.
     """
     os.makedirs(target_dir, exist_ok=True)
     name = os.path.basename(src)
-    if unzip and zipfile.is_zipfile(src):
-        base = os.path.splitext(name)[0]
-        subdir = None
-        for i in range(1, 10000):
-            cand = os.path.join(target_dir, base if i == 1 else '%s (%d)' % (base, i))
-            if not os.path.exists(cand):
-                subdir = cand
-                break
-        os.makedirs(subdir, exist_ok=True)
-        with zipfile.ZipFile(src) as zf:
-            zf.extractall(subdir)
-        os.remove(src)
-        return subdir, t('hinweis_extracted') % subdir
+    low = name.lower()
+    if unzip and _is_archive(name):
+        if low.endswith(_SINGLE_COMPRESS_EXTS):
+            try:
+                dst = _decompress_single(src, target_dir)
+                return dst, t('hinweis_saved') % dst
+            except Exception:
+                pass  # -> unten einfach verschieben
+        else:
+            base = _strip_archive_ext(name)
+            subdir = None
+            for i in range(1, 10000):
+                cand = os.path.join(target_dir, base if i == 1 else '%s (%d)' % (base, i))
+                if not os.path.exists(cand):
+                    subdir = cand
+                    break
+            try:
+                os.makedirs(subdir, exist_ok=True)
+                if _extract_archive(src, subdir):
+                    os.remove(src)
+                    return subdir, t('hinweis_extracted') % subdir
+            except Exception:
+                pass  # Extraktion fehlgeschlagen -> Datei verschieben
     dst = unique_path(target_dir, name)
     shutil.move(src, dst)
     return dst, t('hinweis_saved') % dst
+
+
+# Nur diese Endungen gelten als "echte Archive" (EPUB/MOBI/AZW3 usw. NICHT)
+ARCHIVE_EXTS = ('.zip', '.7z', '.rar', '.tar', '.tgz', '.txz', '.tbz2',
+                '.tar.gz', '.tar.bz2', '.tar.xz', '.gz', '.bz2', '.xz', '.z',
+                '.cab', '.iso', '.arj', '.lzh')
+
+# Einzeln komprimierte Dateien (werden zu einer Datei dekomprimiert)
+_SINGLE_COMPRESS_EXTS = ('.gz', '.bz2', '.xz', '.z')
+
+
+def _is_archive(name):
+    low = (name or '').lower()
+    return low.endswith(ARCHIVE_EXTS)
+
+
+def _strip_archive_ext(name):
+    """Alle bekannten Archiv-Endungen abstreifen: 'Buch.tar.gz' -> 'Buch'."""
+    low = name.lower()
+    for ext in sorted(ARCHIVE_EXTS, key=len, reverse=True):
+        if low.endswith(ext):
+            return name[:-len(ext)]
+    return os.path.splitext(name)[0]
+
+
+def _extract_archive(src, subdir):
+    """Archiv entpacken; True bei Erfolg. zip/tar nativ, Rest über 7z."""
+    low = src.lower()
+    if low.endswith('.zip'):
+        with zipfile.ZipFile(src) as zf:
+            zf.extractall(subdir)
+        return True
+    if low.endswith(('.tar', '.tgz', '.txz', '.tbz2',
+                     '.tar.gz', '.tar.bz2', '.tar.xz')):
+        with tarfile.open(src) as tf:
+            tf.extractall(subdir)
+        return True
+    # 7z, rar, cab, iso, arj, lzh, ... -> externes p7zip
+    sevenz = shutil.which('7z') or shutil.which('7za') or shutil.which('7zr')
+    if not sevenz:
+        return False
+    rc = subprocess.call([sevenz, 'x', '-y', '-o%s' % subdir, src],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return rc == 0
+
+
+def _decompress_single(src, target_dir):
+    """gz/bz2/xz-Einzeldatei dekomprimieren; liefert den Zielpfad."""
+    base = os.path.splitext(os.path.basename(src))[0]
+    dst = unique_path(target_dir, base)
+    low = src.lower()
+    if low.endswith('.gz'):
+        with gzip.open(src, 'rb') as fin, open(dst, 'wb') as fout:
+            shutil.copyfileobj(fin, fout)
+    elif low.endswith('.bz2'):
+        with bz2.open(src, 'rb') as fin, open(dst, 'wb') as fout:
+            shutil.copyfileobj(fin, fout)
+    elif low.endswith('.xz'):
+        with lzma.open(src, 'rb') as fin, open(dst, 'wb') as fout:
+            shutil.copyfileobj(fin, fout)
+    elif low.endswith('.z'):
+        with lzma.open(src, 'rb') as fin, open(dst, 'wb') as fout:
+            shutil.copyfileobj(fin, fout)
+    else:
+        raise ValueError('Unsupported compression: %s' % src)
+    os.remove(src)
+    return dst
 
 
 # ---------------------------------------------------------------------------

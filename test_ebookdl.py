@@ -4,6 +4,9 @@ import os
 import sys
 import shutil
 import zipfile
+import tarfile
+import gzip
+import subprocess
 import tempfile
 import time as realtime
 
@@ -172,6 +175,47 @@ final, hint3 = move_to_target(dl_zip, target, True)
 check('move: zip entfernt', not os.path.exists(dl_zip))
 check('move: entpackt', os.path.exists(os.path.join(final, 'book.epub')))
 check('move: hint', 'entpackt' in hint3 or 'unzipped' in hint3)
+
+# EPUB ist ein ZIP-Container, darf aber NICHT entpackt werden
+epub_file = os.path.join(TMP, 'completed', 'Buch.epub')
+with zipfile.ZipFile(epub_file, 'w') as zf:
+    zf.writestr('mimetype', 'application/epub+zip')
+    zf.writestr('OEBPS/content.opf', '<package/>')
+final_epub, _ = move_to_target(epub_file, target, True)
+check('move: epub bleibt datei', final_epub.endswith('.epub') and os.path.isfile(final_epub))
+check('move: epub nicht entpackt', not os.path.isdir(os.path.join(target, 'Buch')))
+
+# TAR entpacken (nativ via tarfile)
+tar_file = os.path.join(TMP, 'completed', 'TarBuch.tar')
+inner = os.path.join(TMP, 'completed', 'inner.txt')
+with open(inner, 'w', encoding='utf-8') as fh:
+    fh.write('inhalt')
+with tarfile.open(tar_file, 'w') as tf:
+    tf.add(inner, arcname='inner.txt')
+final_tar, _ = move_to_target(tar_file, target, True)
+check('move: tar entpackt', os.path.exists(os.path.join(target, 'TarBuch', 'inner.txt')))
+check('move: tar.ordner', final_tar == os.path.join(target, 'TarBuch'))
+
+# GZ-Einzeldatei -> dekomprimiert zu Datei (kein Unterordner)
+gz_file = os.path.join(TMP, 'completed', 'Daten.txt.gz')
+with gzip.open(gz_file, 'wb') as fh:
+    fh.write(b'gzip inhalt')
+final_gz, _ = move_to_target(gz_file, target, True)
+check('move: gz dekomprimiert', os.path.exists(os.path.join(target, 'Daten.txt'))
+      and open(os.path.join(target, 'Daten.txt'), 'rb').read() == b'gzip inhalt')
+check('move: gz quelle weg', not os.path.exists(gz_file))
+
+# 7z entpacken (extern via p7zip, nur wenn installiert)
+if shutil.which('7z') and subprocess.call(['7z', 'i'], stdout=subprocess.DEVNULL,
+                                          stderr=subprocess.DEVNULL) == 0:
+    z7 = os.path.join(TMP, 'completed', 'SevenBuch.7z')
+    inner7 = os.path.join(TMP, 'completed', 'inner7.txt')
+    with open(inner7, 'w', encoding='utf-8') as fh:
+        fh.write('7z inhalt')
+    if subprocess.call(['7z', 'a', '-y', z7, 'inner7.txt'], cwd=os.path.dirname(z7),
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0:
+        final_7z, _ = move_to_target(z7, target, True)
+        check('move: 7z entpackt', os.path.exists(os.path.join(target, 'SevenBuch', 'inner7.txt')))
 
 # Datei verschieben + Kollision
 f1 = os.path.join(TMP, 'plain.pdf')

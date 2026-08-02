@@ -12,8 +12,8 @@ EbookDL automatisiert die Ebook-Suche und den Download über die
 3. **Auswählen**: Treffer in einer scrollbaren Liste mit Checkboxen
 4. **Herunterladen**: markierte Bücher werden nacheinander angefordert
    und per DCC empfangen
-5. **Ablage**: fertige Dateien landen im Zielordner (ZIPs werden optional
-   entpackt)
+5. **Ablage**: fertige Dateien landen im Zielordner (echte Archive werden
+   optional entpackt — E-Book-Dateien wie EPUB bleiben unangetastet)
 6. **Überblick**: Statuszeile, Fortschrittsbalken und Log im Fenster
 
 Lizenz: **MIT** (siehe LICENSE). Bitte die Regeln des jeweiligen
@@ -161,8 +161,12 @@ zeigt die aktive Sortierung.
   `wartend → angefragt → empfange → fertig` (bzw. `Fehler`).
 - **Wartende abbrechen** entfernt alle noch nicht gesendeten Anfragen.
 - Bei Abschluss wird die Datei in den Zielordner **verschoben**
-  (nicht kopiert); ZIP-Archive werden optional **entpackt**.
-  Namenskollisionen bekommen automatisch ` (1)`, ` (2)`, … angehängt.
+  (nicht kopiert). **Echte Archive** (zip, 7z, rar, tar/tar.gz/tar.bz2/
+  tar.xz/tgz, cab, iso, arj, lzh sowie einzeln komprimierte gz/bz2/xz)
+  werden optional entpackt — zip nativ, der Rest über das installierte
+  `7z` (p7zip). **E-Book-Dateien wie EPUB (technisch eine ZIP-Datei)
+  bleiben bewusst unangetastet.** Namenskollisionen bekommen automatisch
+  ` (1)`, ` (2)`, … angehängt.
 - **Automatische Abwahl**: Nach erfolgreichem Download wird das Häkchen
   der Zeile entfernt — du siehst sofort, was noch fehlt. Fehlgeschlagene
   Downloads bleiben markiert (Status `Fehler`), damit du sie erneut
