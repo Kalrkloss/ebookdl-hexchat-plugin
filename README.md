@@ -186,9 +186,13 @@ zeigt die aktive Sortierung.
 
 ## Einstellungen
 
-**Einstellungen** im Fenster öffnet ein eigenes Fenster; **OK** speichert,
-**Abbrechen** verwirft. Alle Werte werden in `~/.config/hexchat/ebookdl.json`
-(bzw. `%APPDATA%\HexChat\ebookdl.json`) gespeichert und beim Start geladen.
+- **Einstellungen** im Fenster öffnet ein modales Fenster (blockiert das
+  Hauptfenster, solange es offen ist — ein zweiter Klick holt es nur nach
+  vorn). **OK** speichert, **Abbrechen** oder Fenster schließen verwirft.
+  Wird das Hauptfenster geschlossen, schließt das Einstellungen-Fenster
+  automatisch mit. Alle Werte werden in `~/.config/hexchat/ebookdl.json`
+  (bzw. `%APPDATA%\HexChat\ebookdl.json`) gespeichert und beim Start
+  geladen.
 
 | Option               | Standard                    | Bedeutung                                             |
 |----------------------|-----------------------------|-------------------------------------------------------|

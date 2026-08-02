@@ -557,6 +557,7 @@ class EbookDLPlugin(object):
         self.ui_queue = queue.Queue()   # Worker -> Haupt-Thread
         self.results = []               # geparste Treffer (unabhängig vom Fenster)
         self.window = None
+        self.settings_win = None
         self.model = None
         self.entry_search = None
         self.entry_channel = None
@@ -1180,6 +1181,10 @@ class EbookDLPlugin(object):
         self.log('Fenster geöffnet. Kanal: %s' % (self.get_channel() or '(keiner)'))
 
     def on_close(self, widget, event):
+        # Einstellungen-Fenster (falls offen) mit schließen
+        if self.settings_win is not None:
+            self.settings_win.destroy()
+            self.settings_win = None
         self.window.hide()
         return True  # Fenster nur verstecken, Plugin läuft weiter
 
@@ -1215,12 +1220,20 @@ class EbookDLPlugin(object):
     # funktionieren. Zahlenfelder sind einfache Entries mit Validierung.
 
     def settings_dialog(self):
+        if self.settings_win is not None:
+            self.settings_win.present()
+            return
         Gtk = self.Gtk
         win = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
         win.set_title(t('win_title_settings'))
         win.set_default_size(520, -1)
         win.set_border_width(8)
+        win.set_modal(True)  # blockiert das Hauptfenster, solange offen
+        if self.window is not None:
+            win.set_transient_for(self.window)
         win.connect('delete-event', self.on_settings_close)
+        win.connect('destroy', self.on_settings_destroy)
+        self.settings_win = win
 
         box = Gtk.VBox(homogeneous=False, spacing=6)
 
@@ -1320,6 +1333,10 @@ class EbookDLPlugin(object):
     def on_settings_close(self, widget, event):
         widget.destroy()
         return True
+
+    def on_settings_destroy(self, widget):
+        if self.settings_win is widget:
+            self.settings_win = None
 
     # -- Kommandos ------------------------------------------------------------
 
