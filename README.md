@@ -1,144 +1,280 @@
-# EbookDL - HexChat-Plugin für IRC-Ebook-Suche & Download
+# EbookDL – HexChat-Plugin für IRC-Ebook-Suche & Download
 
-Automatisiert den Ablauf mit den "bookz"-Bots (z. B. `#bookz` auf
-`irc.irchighway.net`):
+![EbookDL-Fenster](screenshots/ebookdl.png)
 
-1. `@search <begriff>` in den Channel senden
-2. Ergebnis-ZIP per DCC empfangen, entpacken, Trefferliste parsen
-3. Treffer in einer scrollbaren Liste mit Checkboxen anzeigen
-4. Markierte Bücher nacheinander anfordern und per DCC empfangen
-5. Fertige Dateien in den Zielordner verschieben (ZIPs optional entpacken)
-6. Fortschritt von Anfragen und Downloads im Plugin-Fenster anzeigen
+EbookDL automatisiert die Ebook-Suche und den Download über die
+"bookz"-Bots im IRC (z. B. `#bookz` oder `#ebooks` auf
+`irc.irchighway.net`) — komplett in einem Fenster, mit Netiquette-Queue:
 
-Lizenz: MIT (siehe LICENSE). Haftung: Bitte die Regeln des jeweiligen
-IRC-Netzwerks und Channels respektieren (Netiquette-Vorgaben sind im
-Plugin standardmäßig eingestellt und änderbar).
+1. **Suchen**: sendet `@search <begriff>` in den Channel
+2. **Ergebnisse**: empfängt die Ergebnis-ZIP per DCC, entpackt sie und
+   parst die Trefferliste (Dateiname + Größe)
+3. **Auswählen**: Treffer in einer scrollbaren Liste mit Checkboxen
+4. **Herunterladen**: markierte Bücher werden nacheinander angefordert
+   und per DCC empfangen
+5. **Ablage**: fertige Dateien landen im Zielordner (ZIPs werden optional
+   entpackt)
+6. **Überblick**: Statuszeile, Fortschrittsbalken und Log im Fenster
+
+Lizenz: **MIT** (siehe LICENSE). Bitte die Regeln des jeweiligen
+IRC-Netzwerks/Channels respektieren — die Netiquette-Vorgaben sind im
+Plugin standardmäßig eingestellt und anpassbar.
+
+---
+
+## Funktionen im Überblick
+
+- Such- und Download-Fenster direkt aus HexChat (`/ebookdl`)
+- Automatische Erkennung der Ergebnis-ZIP (kein manuelles Öffnen nötig)
+- Trefferliste mit Größenangabe, Checkboxen und Status-Spalte
+- Warteschlange mit strikter Netiquette: eine Anfrage pro Pause-Intervall,
+  begrenzte parallele Downloads, Timeouts
+- DCC-Zuordnung per Bot-Nick und Dateiname (mit FIFO-Fallback)
+- Zielordner, Pausen, Parallelität und Suchbefehl konfigurierbar
+- Ergebnis-ZIPs werden nach dem Parsen automatisch gelöscht
+- Läuft in HexChats GTK2 — kein separates Fenster-Management nötig
+
+---
+
+## Voraussetzungen
+
+**Linux**
+
+- HexChat (≥ 2.14, Python-Scripting aktiv — Standard)
+- Python 3 + PyGObject mit GTK2-Typelibs für das Fenster:
+
+      sudo apt-get install python3-gi gir1.2-gtk-2.0
+
+**Windows**
+
+- HexChat (offizieller Installer, enthält die Python-Integration)
+- Die GUI benötigt PyGObject (`gi`) mit Gtk-2.0-Typelibs — im
+  Windows-Installer in der Regel nicht enthalten. Ohne diese meldet das
+  Plugin beim Öffnen einen Hinweis; die Such-/Download-Logik (Hook-
+  basiert) läuft trotzdem, nur ohne Fenster.
+
+---
 
 ## Installation
 
-Voraussetzungen (Linux):
+### Linux
 
-    sudo apt-get install python3-gi gir1.2-gtk-2.0
+1. Plugin-Datei in den Autoload-Ordner legen. **Wichtig:** Python-Skripte
+   laden aus `addons/`, nicht aus `plugins/`:
 
-Plugin installieren (Python-Skripte laden aus `addons/`, nicht `plugins/`):
+       mkdir -p ~/.config/hexchat/addons
+       cp ebookdl.py ~/.config/hexchat/addons/
+       # oder Symlink, wenn du im Repo weiterentwickelst:
+       ln -s "$PWD/ebookdl.py" ~/.config/hexchat/addons/ebookdl.py
 
-    mkdir -p ~/.config/hexchat/addons
-    cp ebookdl.py ~/.config/hexchat/addons/
-    # oder als Symlink, wenn du im Repo weiterentwickeln willst:
-    ln -s "$PWD/ebookdl.py" ~/.config/hexchat/addons/ebookdl.py
+2. HexChat neu starten (oder im laufenden HexChat `/py load /pfad/zu/ebookdl.py`
+   eingeben). Das Plugin lädt, sobald eine IRC-Verbindung steht.
+3. Fenster öffnen: `/ebookdl` in die Eingabezeile tippen.
 
-HexChat neu starten (oder `/py load /pfad/zu/ebookdl.py` im laufenden HexChat).
-Fenster mit `/ebookdl` öffnen.
+### Windows
 
-Windows:
+1. HexChat installieren und einmal verbinden.
+2. `ebookdl.py` nach `%APPDATA%\HexChat\addons\` kopieren.
+3. HexChat neu starten, `/ebookdl` tippen.
 
-- HexChat installieren (hexchat.github.io / GitHub Releases)
-- `ebookdl.py` nach `%APPDATA%\HexChat\addons\` kopieren
-- Die GUI (Fenster, Liste) benötigt PyGObject (`gi`) mit Gtk-2.0-Typelibs —
-  unter Windows im HexChat-Installer in der Regel nicht enthalten. Ohne
-  diese meldet das Plugin einen Hinweis; die Such-/Download-Logik
-  (Hook-basiert) läuft trotzdem.
-- HexChat neu starten, `/ebookdl` tippen
+### Deinstallation
 
-Hinweis: Der Zielordner (Standard `~/Downloads/ebooks` bzw.
-`%USERPROFILE%\Downloads\ebooks`) ist in den Einstellungen änderbar.
+- Datei aus `~/.config/hexchat/addons/` (bzw. `%APPDATA%\HexChat\addons\`)
+  entfernen und HexChat neu starten — oder zur Laufzeit:
+  `/py unload EbookDL`.
 
-## Bedienung
+---
 
-- **Kanal**: Feld oben im Fenster; leer = aktueller Kanal. Oder in den
-  Einstellungen fest hinterlegen.
-- **Suche**: Suchbegriff eingeben, Enter oder "Suche starten".
-  Das Plugin sendet `@search <begriff>` in den Channel.
-- **Treffer**: Die Liste zeigt Dateiname und Größe; Häkchen setzen,
-  "Download starten" klicken.
-- **Fortschritt**: Unterer Bereich zeigt Statuszeile, Fortschrittsbalken
-  und ein Log mit Zeitstempel.
+## Erste Schritte (Schnellstart)
 
-## Netiquette / Regeln (standardmäßig eingestellt)
+1. In einen Ebook-Channel wechseln (z. B. `/join #ebooks` auf
+   irc.irchighway.net) — oder den Kanal später in den Einstellungen fest
+   hinterlegen.
+2. `/ebookdl` eingeben — das Fenster öffnet sich.
+3. Suchbegriff ins Feld **Suche** tippen, Enter drücken (oder
+   **Suche starten**). Der Status zeigt *Suche läuft …*.
+4. Sobald der Bot antwortet, erscheint unten im Log
+   *Ergebnis-Datei wird empfangen* und danach die Trefferzahl, z. B.
+   *855 Treffer – Bücher markieren und Download starten*.
+5. In der Liste Bücher mit Häkchen markieren und **Download starten**
+   klicken. Die Anfragen gehen mit Pause raus, die Dateien landen im
+   Zielordner (Standard: `~/Downloads/ebooks`).
 
-- Pause zwischen zwei Anfragen: **10 s** (strikt eingehalten)
-- Max. gleichzeitige Übertragungen: **2**
-- Timeout pro Download: **300 s**
-- Timeout für die Ergebnis-Datei: **180 s**
-- DCC-Dateien werden während Suche/Download automatisch angenommen
-  (`dcc_auto_recv` wird temporär auf 2 gesetzt und danach wieder
-  zurückgesetzt). Alternativ in HexChat fest einstellen:
-  Einstellungen → DCC → "Dateiübertragungen automatisch annehmen".
+---
 
-Alle Werte sind in den Einstellungen des Plugins änderbar
-(Schaltfläche "Einstellungen").
+## Bedienung im Detail
 
-## Konfiguration
+### Das Fenster
 
-Wird als `ebookdl.json` im HexChat-Konfigurationsordner gespeichert
-(~/.config/hexchat/ebookdl.json):
+| Bereich            | Inhalt                                                              |
+|---------------------|---------------------------------------------------------------------|
+| Kopfzeile           | Kanal-Feld (Anzeige), Suchfeld, **Suche starten**-Button            |
+| Tabelle             | Checkbox, Dateiname, Größe, Status                                  |
+| Button-Leiste       | Alle markieren / Keine markieren / Download starten / Wartende abbrechen / Einstellungen |
+| Fortschrittsbereich | Statuszeile, Fortschrittsbalken, Log mit Zeitstempel                |
 
-| Schlüssel         | Bedeutung                                  | Standard                  |
-|-------------------|--------------------------------------------|---------------------------|
-| channel           | Ziel-Channel (leer = aktueller)            | ""                        |
-| search_cmd        | Suchbefehl, `{query}` wird ersetzt         | "@search {query}"         |
-| target_dir        | Zielordner für Downloads                   | ~/Downloads/ebooks        |
-| delay             | Pause zwischen Anfragen (Sekunden)         | 10                        |
-| max_concurrent    | max. parallele Übertragungen               | 2                         |
-| timeout           | Timeout pro Download (Sekunden)            | 300                       |
-| search_timeout    | Timeout bis zur Ergebnis-Datei (Sekunden)  | 180                       |
-| unzip             | ZIPs nach dem Download entpacken           | true                      |
-| auto_accept       | DCC automatisch annehmen während Betrieb   | true                      |
+### Suche
 
-## Ablauf im Detail
+- **Suchfeld**: Begriff eingeben, Enter drücken. Gesendet wird
+  `@search <begriff>` (der Befehl ist in den Einstellungen änderbar).
+- **Kanal**: Ist das Kanal-Feld leer, wird der aktuell aktive Channel
+  verwendet. Steht dort ein Kanal (aus den Einstellungen), geht die Suche
+  dorthin.
+- **Während einer laufenden Suche** wird eine zweite Suche mit
+  *Suche läuft bereits – bitte warten.* abgelehnt.
+- **Ergebnis**: Der Bot sendet eine ZIP per DCC. Das Plugin erkennt sie
+  automatisch (*Ergebnis-Datei wird empfangen*), entpackt sie im
+  Hintergrund, parst die Treffer und befüllt die Liste. Die ZIP wird
+  danach gelöscht (*Ergebnis-ZIP gelöscht*).
+- **Timeout**: Kommt innerhalb des Such-Timeout (Standard 180 s) keine
+  Datei, wird abgebrochen (*Timeout: Keine Ergebnis-Datei empfangen.*).
 
-**Suche**: `@search <begriff>` → der Bot schickt per DCC eine ZIP mit einer
-Textdatei. Zeilen im Format:
+### Ergebnisliste
 
-    !artemis_serv 16d6770d2ba9 | 27 - The Last Hero - Graphic Novel.pdf ::INFO:: 49.78MB
+- Jede Zeile: **Checkbox** (Häkchen = ausgewählt), **Dateiname**,
+  **Größe**, **Status** (wird beim Download gefüllt).
+- **Alle markieren / Keine markieren** setzt bzw. entfernt alle Häkchen.
+- Die Auswahl bleibt beim Schließen des Fensters erhalten (die
+  Ergebnisliste wird fensterunabhängig gespeichert) — beim erneuten
+  Öffnen ist sie wieder da.
 
-**Download**: Für jedes markierte Buch wird der Teil vor `::INFO::` gesendet:
+### Download
 
-    !artemis_serv 16d6770d2ba9 | 27 - The Last Hero - Graphic Novel.pdf
+- **Download starten**: Alle markierten Bücher werden in die
+  Warteschlange eingereiht (*N Download(s) eingereiht*).
+- Die Anfragen werden **einzeln mit Pause** (Standard 10 s) gesendet;
+  gleichzeitig laufen höchstens `max_concurrent` Downloads (Standard 2).
+- Die Status-Spalte zeigt den Fortschritt jeder Zeile:
+  `wartend → angefragt → empfange → fertig` (bzw. `Fehler`).
+- **Wartende abbrechen** entfernt alle noch nicht gesendeten Anfragen.
+- Bei Abschluss wird die Datei in den Zielordner **verschoben**
+  (nicht kopiert); ZIP-Archive werden optional **entpackt**.
+  Namenskollisionen bekommen automatisch ` (1)`, ` (2)`, … angehängt.
+- Ein Download, der innerhalb des Timeouts (Standard 300 s) keinen
+  Empfang startet, wird als Fehler markiert.
 
-Der Bot antwortet per DCC mit der Datei (meist ZIP, wird entpackt).
+### Fortschrittsbereich
 
-**Zuordnung**: Eingehende DCC-Dateien werden dem passenden Download
-zugeordnet (Bot-Nickname aus der Anfrage, dann Dateinamen-Vergleich,
-dann FIFO). Empfangene Dateien landen in `target_dir`.
+- **Statuszeile**: fasst den aktuellen Zustand zusammen (Suche, Treffer,
+  laufender Download, Fehler).
+- **Fortschrittsbalken**: erscheint während der Downloads.
+- **Log**: zeitgestempelte Meldungen des Plugins (Suche gesendet,
+  Empfang, Parsing, Downloads, Fehler).
 
-## Tests
+---
 
-    python3 test_ebookdl.py
+## Einstellungen
 
-Testet Parsing, ZIP-Auswertung, Datei-Matching, Queue-Scheduling
-(Pause/Limit) und den kompletten DCC-Datenfluss mit einem HexChat-Stub.
+**Einstellungen** im Fenster öffnet ein eigenes Fenster; **OK** speichert,
+**Abbrechen** verwirft. Alle Werte werden in `~/.config/hexchat/ebookdl.json`
+(bzw. `%APPDATA%\HexChat\ebookdl.json`) gespeichert und beim Start geladen.
 
-## Bekannte Grenzen
+| Option               | Standard                    | Bedeutung                                             |
+|----------------------|-----------------------------|-------------------------------------------------------|
+| Kanal                | (leer)                      | Fester Kanal für Suche/Downloads; leer = aktueller    |
+| Suchbefehl           | `@search {query}`           | Vorlage; `{query}` wird durch den Begriff ersetzt     |
+| Zielordner           | `~/Downloads/ebooks`        | Ablage der fertigen Dateien                           |
+| Pause zwischen Anfragen | 10 s                     | Mindestabstand zwischen zwei Anfragen (Netiquette)   |
+| Max. parallele Downloads | 2                       | gleichzeitig laufende Downloads                       |
+| Download-Timeout     | 300 s                       | Abbruch, wenn kein Empfang beginnt                    |
+| Such-Timeout         | 180 s                       | Abbruch der Suche ohne Ergebnisdatei                  |
+| ZIP entpacken        | an                          | Archive im Zielordner automatisch entpacken           |
 
-- Ergebnis-ZIPs werden nach dem Parsen automatisch gelöscht (der
-  Such-Ergebnis-Puffer bleibt sauber).
-- Falls der Bot die Datei unter stark abweichendem Namen sendet, greift
-  die FIFO-Zuordnung (älteste offene Anfrage).
-- GTK2-GUI: läuft in-process im GTK2 von HexChat. Auf Systemen ohne
-  python3-gi/gir1.2-gtk-2.0 meldet das Plugin beim Öffnen des Fensters
-  einen Hinweis.
-- Das Gtk-2.0-Typelib von Ubuntu ist unvollständig: Einige Konstruktoren
-  (Gtk.TreeView(model), Gtk.Dialog, Gtk.SpinButton, Gtk.FileChooserButton,
-  Gtk.Table) nehmen keine Argumente oder sind kaputt. Das Plugin verwendet
-  deshalb nur die funktionierenden Muster; die Einstellungen sind bewusst
-  als einfache Eingabefelder gebaut (kein Gtk.Dialog, kein Datei-Browser,
-  kein SpinButton). Der Zielordner-Pfad wird direkt eingetragen.
-- Der Einstellungs-Dialog ist ein eigenes Fenster (kein modaler Dialog);
-  "OK" speichert, "Abbrechen" oder Fenster schließen verwirft.
+---
 
-## Wichtige API-Erkenntnisse (HexChat-Python-Plugin)
+## Netiquette & Warteschlange
 
-- In Print-Hook-Callbacks beginnt das `word[]`-Array mit dem ERSTEN
-  Argument des Events (`word[0]` = $1) - der Event-Name steht NICHT im
-  Array. Beispiel 'DCC RECV Connect': `word = [nick, host, dateiname]`.
-  (Im C-Plugin-API ist es anders; die Python-Bridge verschiebt.)
-- Bei EMPFANGENEN Dateien feuert KEIN 'DCC Offer'-Event (das ist das
-  Event für ausgehende Angebote). Eingehende Transfers melden 'DCC RECV
-  Connect' (Transfer beginnt) und 'DCC RECV Complete' (fertig; word =
-  [dateiname, zielpfad, nick, cps]).
-- Autoload-Skripte (addons/) und per '/py load' geladene Skripte
-  registrieren Hooks identisch; nach einem '/py reload' bleiben alte
-  Fenster-Instanzen als "Zombies" mit weiterhin registrierten Hooks
-  bestehen (GTK-Fenster halten die Plugin-Objekte am Leben). Sauberer
-  Neustart oder unload+load vermeidet Verwirrung beim Testen.
+Die bookz-Netzwerke erwarten maßvolles Verhalten. EbookDL setzt das
+standardmäßig um und gibt es nicht auf:
+
+- **Eine Anfrage pro Pause-Intervall** — auch wenn viele Bücher markiert
+  sind, wird höchstens alle `delay` Sekunden eine Anfrage gesendet.
+- **Max. `max_concurrent` aktive Downloads** — weitere Anfragen warten in
+  der Queue, bis ein Download abgeschlossen oder fehlgeschlagen ist.
+- **Timeouts** verhindern, dass hängende Suchvorgänge oder Downloads die
+  Queue blockieren.
+- **Kein Spam**: Der Suchbefehl ist konfigurierbar, die Anfragen werden
+  exakt aus der Trefferliste erzeugt (keine Eigenkonstrukte).
+
+---
+
+## Fehlerbehebung
+
+| Problem | Lösung |
+|---------|--------|
+| `/ebookdl` → *Unknown command* | Plugin nicht geladen. Liegt `ebookdl.py` in `~/.config/hexchat/addons/`? Prüfen mit `/py list` (Eintrag *EbookDL*), nachladen mit `/py load /pfad/ebookdl.py`. HexChat muss einmal verbunden sein. |
+| Fenster öffnet nicht, Meldung *GUI-Bindings fehlen* | `python3-gi` / `gir1.2-gtk-2.0` installieren (Linux) bzw. PyGObject bereitstellen (Windows). Such-/Download-Logik läuft trotzdem. |
+| *FEHLER: Kein Kanal* | In einen Channel wechseln oder Kanal in den Einstellungen festlegen. |
+| Ergebnis-ZIP kommt an, aber keine Treffer | Ergebnisdatei nicht gefunden oder Parse-Fehler — Log beachten; ggf. Timeout erhöhen. |
+| Downloads bleiben bei *angefragt* | Bot hat nicht geantwortet (offline/anderer Name). Timeout markiert die Zeile als Fehler; prüfen, ob der Bot im Kanal aktiv ist. |
+| Datei landet nicht im Zielordner | Zielordner in den Einstellungen prüfen (Schreibrechte); das Plugin verschiebt nur nach erfolgreichem DCC-Empfang. |
+| Mehrere EbookDL-Fenster nach Reloads | `/py unload EbookDL` + `/py load …` oder HexChat neu starten (bekanntes Verhalten nach `/py reload`). |
+
+---
+
+## Wie es funktioniert (Technik)
+
+1. **Suche**: Das Plugin sendet den Suchbefehl (Standard `@search <begriff>`)
+   als Nachricht in den Kanal. Die bookz-Bots antworten mit einer ZIP-Datei
+   per DCC (Dateiname z. B. `SearchBot_results_for__begriff.txt.zip`).
+2. **Erkennung**: Eingehende DCC-Transfers meldet HexChat über die
+   Print-Events `DCC RECV Connect` und `DCC RECV Complete` (Achtung:
+   `DCC Offer` ist das Event für *ausgehende* Angebote). EbookDL lauscht
+   auf diese Events, erkennt die Ergebnis-ZIP am Dateinamen und parst sie
+   in einem Hintergrund-Thread.
+3. **Parsen**: Die ZIP enthält eine Textdatei mit Zeilen wie
+   `!bot id | datei.pdf ::INFO:: 49.78MB`. Das Plugin extrahiert
+   Dateiname, Größe und Bot-Nick und baut daraus die Liste.
+4. **Download**: Für markierte Zeilen wird der Teil vor `::INFO::`
+   (der `!`-Request) als Nachricht gesendet. Der Bot schickt die Datei per
+   DCC; die Zuordnung zur Zeile erfolgt über Bot-Nick → Dateiname → FIFO.
+   Nach dem Empfang verschiebt das Plugin die Datei in den Zielordner
+   (ZIPs werden entpackt).
+5. **Netiquette**: Die Queue sendet strikt eine Anfrage pro Intervall und
+   begrenzt die parallelen Transfers (siehe oben).
+
+### Wichtige HexChat-Python-API-Erkenntnisse (für Entwickler)
+
+- In Print-Hook-Callbacks beginnt das `word[]`-Array mit dem **ersten
+  Argument** des Events (`word[0]` = $1) — der Event-Name steht NICHT im
+  Array (die Python-Bridge verschiebt; im C-API ist es anders).
+  Beispiel `DCC RECV Connect` → `word = [nick, host, dateiname]`.
+- **`DCC Offer` feuert nicht bei eingehenden Dateien** (nur bei
+  ausgehenden). Eingehende Transfers: `DCC RECV Connect` (Beginn) und
+  `DCC RECV Complete` (fertig; `word = [dateiname, zielpfad, nick, cps]`).
+- Event-Namen (hookbar) exakt wie in `src/common/textevents.in`.
+- **Gtk2-Typelib-Limits** (Ubuntu): viele Konstruktoren nehmen keine
+  Argumente (`Gtk.TreeView(model)` etc. schlagen fehl) — das Plugin nutzt
+  deshalb konsequent das Muster `Widget()` + Setter. `Gtk.Dialog().run()`
+  kann im HexChat-Kontext einen Segfault auslösen — die Einstellungen
+  sind deshalb ein eigenes Fenster mit OK/Abbrechen.
+- `/py reload` hinterlässt alte Fenster als "Zombies" mit weiterhin
+  registrierten Hooks (GTK hält die Plugin-Objekte am Leben) — zum Testen
+  `unload` + `load` oder Neustart verwenden.
+- Die Python-API hat **kein** `hexchat.set_prefs` — Präferenzen
+  (`dcc_auto_recv` usw.) werden über `/set` via `hexchat.command()` gesetzt.
+
+---
+
+## Entwicklung & Tests
+
+Das Plugin ist ein einzelnes Python-Skript (kein Build nötig).
+
+    python3 test_ebookdl.py          # Unit-Tests (HexChat-Stub, ohne GUI/IRC)
+
+Struktur:
+
+- `ebookdl.py` – das Plugin (Hooks, Queue, Parser, GUI)
+- `test_ebookdl.py` – Test-Harness mit gemocktem `hexchat`-Modul
+- `screenshots/` – Screenshots für die Doku
+
+---
+
+## Lizenz & Haftung
+
+MIT-Lizenz, siehe [LICENSE](LICENSE). Copyright © 2026 Kalrkloss.
+
+Dieses Projekt ist ein Werkzeug zur Automatisierung öffentlicher
+IRC-Kanal-Funktionen. Bitte halte dich an die Regeln des jeweiligen
+Netzwerks und Channels; der Autor übernimmt keine Haftung für die Nutzung
+oder die heruntergeladenen Inhalte.
