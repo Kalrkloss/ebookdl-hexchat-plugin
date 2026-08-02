@@ -27,8 +27,12 @@ Plugin standardmäßig eingestellt und anpassbar.
 - Such- und Download-Fenster direkt aus HexChat (`/ebookdl`)
 - Automatische Erkennung der Ergebnis-ZIP (kein manuelles Öffnen nötig)
 - Trefferliste mit Größenangabe, Checkboxen und Status-Spalte
-- **Sortierbare Liste**: Klick auf die Kopfzeile sortiert nach Name
+- Sortierbare Liste: Klick auf die Kopfzeile sortiert nach Name
   (case-insensitive), Dateityp oder Größe (numerisch)
+- **Feste Spaltenbreiten**: Beim Öffnen des Fensters und nach dem Einlesen
+  von Ergebnissen sind alle Spalten sichtbar — lange Dateinamen und
+  Ziel-Pfade werden mit `…` abgeschnitten statt die Spalten aufzuziehen
+  (die Datei-Spalte lässt sich weiterhin per Maus anpassen)
 - Warteschlange mit strikter Netiquette: eine Anfrage pro Pause-Intervall,
   begrenzte parallele Downloads, Timeouts
 - DCC-Zuordnung per Bot-Nick und Dateiname (mit FIFO-Fallback)
