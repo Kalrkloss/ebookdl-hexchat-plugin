@@ -862,6 +862,8 @@ class EbookDLPlugin(object):
         tree.append_column(col_toggle)
         col_name = Gtk.TreeViewColumn('Datei', Gtk.CellRendererText(), text=1)
         col_name.set_sort_column_id(8)  # case-insensitive über Klein-Name
+        col_name.set_resizable(True)    # linken Rand von "Typ" ziehbar -> Datei passt sich an
+        col_name.set_min_width(80)
         tree.append_column(col_name)
         col_type = Gtk.TreeViewColumn('Typ', Gtk.CellRendererText(), text=2)
         col_type.set_sort_column_id(2)
