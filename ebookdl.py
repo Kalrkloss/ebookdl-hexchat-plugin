@@ -75,13 +75,19 @@ def format_bytes(num):
     return '?'
 
 
+def filetype_of(filename):
+    """Dateityp (Endung) aus dem Dateinamen, z. B. 'PDF', 'EPUB', '-'."""
+    ext = os.path.splitext(filename or '')[1].lstrip('.').lower()
+    return ext.upper() if ext else '-'
+
+
 def parse_result_line(line):
     """
     Eine Zeile aus der Ergebnisdatei parsen, z. B.:
 
       !artemis_serv 16d6770d2ba9 | 27 - The Last Hero - Graphic Novel.pdf ::INFO:: 49.78MB
 
-    -> dict(request, filename, size, botnick) oder None.
+    -> dict(request, filename, size, botnick, filetype) oder None.
     """
     line = line.strip()
     if not line.startswith('!'):
@@ -101,6 +107,7 @@ def parse_result_line(line):
     return {
         'request': request,
         'filename': filename,
+        'filetype': filetype_of(filename),
         'size': size,
         'botnick': botnick,
         'size_bytes': parse_size(size),
@@ -421,11 +428,11 @@ class EbookDLPlugin(object):
         while it is not None:
             if self.model.get_value(it, 0):
                 rows.append({
-                    'request': self.model.get_value(it, 3),
+                    'request': self.model.get_value(it, 4),
                     'filename': self.model.get_value(it, 1),
-                    'size': self.model.get_value(it, 2),
-                    'botnick': self.model.get_value(it, 4),
-                    'size_bytes': parse_size(self.model.get_value(it, 2)),
+                    'size': self.model.get_value(it, 3),
+                    'botnick': self.model.get_value(it, 5),
+                    'size_bytes': self.model.get_value(it, 7) or 0.0,
                 })
             it = self.model.iter_next(it)
         if not rows:
@@ -479,8 +486,8 @@ class EbookDLPlugin(object):
             return
         it = self.model.get_iter_first()
         while it is not None:
-            if self.model.get_value(it, 3) == request:
-                self.model.set_value(it, 5, status)
+            if self.model.get_value(it, 4) == request:
+                self.model.set_value(it, 6, status)
                 return
             it = self.model.iter_next(it)
 
@@ -490,7 +497,7 @@ class EbookDLPlugin(object):
             return
         it = self.model.get_iter_first()
         while it is not None:
-            if self.model.get_value(it, 3) == request:
+            if self.model.get_value(it, 4) == request:
                 self.model.set_value(it, 0, bool(checked))
                 return
             it = self.model.iter_next(it)
@@ -764,8 +771,11 @@ class EbookDLPlugin(object):
             if self.model is not None:
                 self.model.clear()
                 for r in results:
-                    self.model.append([False, r['filename'], r['size'],
-                                       r['request'], r['botnick'], ''])
+                    self.model.append([False, r['filename'],
+                                       r.get('filetype', filetype_of(r['filename'])),
+                                       r['size'], r['request'], r['botnick'], '',
+                                       float(r.get('size_bytes') or 0.0),
+                                       r['filename'].lower()])
             self.set_status('%d Treffer - Bücher markieren und Download starten' % len(results))
         elif kind == 'moved':
             _, req, final, hinweis, error = msg
@@ -831,10 +841,15 @@ class EbookDLPlugin(object):
         vbox.pack_start(head, False, False, 0)
 
         # -- Ergebnisliste
-        self.model = Gtk.ListStore(bool, str, str, str, str, str)
+        # Spalten: 0 Check, 1 Datei, 2 Typ, 3 Größe, 4 Request, 5 Bot,
+        #          6 Status, 7 Größe-Bytes (Sortierung), 8 Datei-Klein (Sortierung)
+        self.model = Gtk.ListStore(bool, str, str, str, str, str, str, float, str)
         for r in self.results:
-            self.model.append([False, r['filename'], r['size'],
-                               r['request'], r['botnick'], ''])
+            self.model.append([False, r['filename'],
+                               r.get('filetype', filetype_of(r['filename'])),
+                               r['size'], r['request'], r['botnick'], '',
+                               float(r.get('size_bytes') or 0.0),
+                               r['filename'].lower()])
         tree = Gtk.TreeView()
         tree.set_model(self.model)
         tree.set_rules_hint(True)
@@ -845,11 +860,18 @@ class EbookDLPlugin(object):
         col_toggle = Gtk.TreeViewColumn('Download', rend_toggle, active=0)
         col_toggle.set_fixed_width(70)
         tree.append_column(col_toggle)
-        tree.append_column(Gtk.TreeViewColumn('Datei', Gtk.CellRendererText(), text=1))
-        col_size = Gtk.TreeViewColumn('Größe', Gtk.CellRendererText(), text=2)
+        col_name = Gtk.TreeViewColumn('Datei', Gtk.CellRendererText(), text=1)
+        col_name.set_sort_column_id(8)  # case-insensitive über Klein-Name
+        tree.append_column(col_name)
+        col_type = Gtk.TreeViewColumn('Typ', Gtk.CellRendererText(), text=2)
+        col_type.set_sort_column_id(2)
+        col_type.set_fixed_width(70)
+        tree.append_column(col_type)
+        col_size = Gtk.TreeViewColumn('Größe', Gtk.CellRendererText(), text=3)
+        col_size.set_sort_column_id(7)  # numerisch nach Bytes
         col_size.set_fixed_width(90)
         tree.append_column(col_size)
-        col_status = Gtk.TreeViewColumn('Status', Gtk.CellRendererText(), text=5)
+        col_status = Gtk.TreeViewColumn('Status', Gtk.CellRendererText(), text=6)
         col_status.set_fixed_width(240)
         tree.append_column(col_status)
         sw = Gtk.ScrolledWindow()

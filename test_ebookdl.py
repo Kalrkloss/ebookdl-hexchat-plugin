@@ -67,11 +67,29 @@ stub = StubHexchat()
 sys.modules['hexchat'] = stub
 sys.path.insert(0, BASE)
 
+# Minimale ListStore-Emulation (Layout wie im Plugin: 0 Check, 1 Datei,
+# 2 Typ, 3 Größe, 4 Request, 5 Bot, 6 Status, 7 Bytes, 8 Klein-Name)
+class FakeModel(object):
+    def __init__(self, rows):
+        self.rows = rows
+    def clear(self):
+        self.rows = []
+    def append(self, row):
+        self.rows.append(list(row))
+    def get_iter_first(self):
+        return 0 if self.rows else None
+    def iter_next(self, it):
+        return it + 1 if it + 1 < len(self.rows) else None
+    def get_value(self, it, col):
+        return self.rows[it][col]
+    def set_value(self, it, col, val):
+        self.rows[it][col] = val
+
 import ebookdl
 ebookdl.release_single_instance()  # Import-löst main() aus -> Marker zurücksetzen
 from ebookdl import (parse_result_line, parse_results_text, parse_results_zip,
                      nick_matches, name_matches, move_to_target, unique_path,
-                     format_bytes, parse_size)
+                     format_bytes, parse_size, filetype_of)
 
 passed = 0
 failed = 0
@@ -95,6 +113,9 @@ check('parse: filename', item is not None and item['filename'] == '27 - The Last
 check('parse: size', item is not None and item['size'] == '49.78MB')
 check('parse: botnick', item is not None and item['botnick'] == 'artemis_serv')
 check('parse: size_bytes', item is not None and abs(item['size_bytes'] - 49.78 * 1024 * 1024) < 1)
+check('parse: filetype', item is not None and item['filetype'] == 'PDF')
+check('filetype: mehrfach-endung', filetype_of('Buch.Name.Tar.GZ') == 'GZ')
+check('filetype: keine endung', filetype_of('ohne_endung') == '-')
 check('parse: junk line', parse_result_line('just some text') is None)
 check('parse: no INFO', parse_result_line('!foo_serv abc | x.pdf') is None)
 
@@ -270,6 +291,16 @@ while realnow() < deadline and os.path.exists(res_file):
     realtime.sleep(0.05)
 check('ergebnis-zip geloescht', not os.path.exists(res_file))
 
+# Neue Spalten im Model: Typ (2), Bytes (7), Klein-Name (8)
+fm2 = FakeModel([])
+p.model = fm2
+p.handle_ui_msg(('results', p.results, '1 Datei', 'x'))
+check('results: spalte typ', len(fm2.rows) == 2 and fm2.rows[0][2] == 'PDF')
+check('results: spalte groesse', len(fm2.rows) == 2 and fm2.rows[0][3] == '49.78MB')
+check('results: spalte bytes', len(fm2.rows) == 2 and abs(fm2.rows[0][7] - 49.78 * 1024 * 1024) < 1)
+check('results: spalte kleinname', len(fm2.rows) == 2
+      and fm2.rows[0][8] == '27 - the last hero - graphic novel.pdf')
+
 # Complete: Download-Datei -> moved
 dl_item = p.downloads[rows[1]['request']]
 dl_item['state'] = 'angefragt'
@@ -278,20 +309,8 @@ dl_file = os.path.join(TMP, 'completed', 'Book One.pdf')
 with open(dl_file, 'wb') as fh:
     fh.write(b'fake pdf')
 
-# Minimale ListStore-Emulation, um die Checkbox-Abwahl zu prüfen
-class FakeModel(object):
-    def __init__(self, rows):
-        self.rows = rows
-    def get_iter_first(self):
-        return 0 if self.rows else None
-    def iter_next(self, it):
-        return it + 1 if it + 1 < len(self.rows) else None
-    def get_value(self, it, col):
-        return self.rows[it][col]
-    def set_value(self, it, col, val):
-        self.rows[it][col] = val
-
-fm = FakeModel([[True, 'Book One.pdf', '1.0MB', rows[1]['request'], 'artemis_serv', '']])
+# Checkbox-Abwahl nach Download prüfen (FakeModel oben definiert)
+fm = FakeModel([[True, 'Book One.pdf', 'PDF', '1.0MB', rows[1]['request'], 'artemis_serv', '']])
 p.model = fm
 p.on_dcc_complete(['Book One.pdf', dl_file, 'artemis_serv', '99999'], None, None)
 # Verschieben läuft im Thread -> pollen bis Datei im Ziel liegt
