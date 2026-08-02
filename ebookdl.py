@@ -484,6 +484,17 @@ class EbookDLPlugin(object):
                 return
             it = self.model.iter_next(it)
 
+    def set_row_checked(self, request, checked):
+        """Checkbox einer Zeile setzen (z. B. nach Download abwählen)."""
+        if self.model is None:
+            return
+        it = self.model.get_iter_first()
+        while it is not None:
+            if self.model.get_value(it, 3) == request:
+                self.model.set_value(it, 0, bool(checked))
+                return
+            it = self.model.iter_next(it)
+
     # -- DCC-Hooks (Haupt-Thread) --------------------------------------------
     #
     # WICHTIG (word[]-Layout): In der Python-API beginnt das word-Array bei
@@ -767,6 +778,7 @@ class EbookDLPlugin(object):
             else:
                 item['path'] = final
                 self.set_row_status(req, '%s: %s' % (ST_DONE, final))
+                self.set_row_checked(req, False)
                 self.log('Fertig: %s (%s)' % (item['filename'], hinweis))
                 self.set_status('Fertig: %s' % os.path.basename(final))
 

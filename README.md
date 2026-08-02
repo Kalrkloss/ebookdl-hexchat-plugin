@@ -30,6 +30,9 @@ Plugin standardmäßig eingestellt und anpassbar.
 - Warteschlange mit strikter Netiquette: eine Anfrage pro Pause-Intervall,
   begrenzte parallele Downloads, Timeouts
 - DCC-Zuordnung per Bot-Nick und Dateiname (mit FIFO-Fallback)
+- Nach erfolgreichem Download wird das Buch automatisch abgewählt —
+  fertige Titel verschwinden so aus der Auswahl (Fehler bleiben markiert,
+  damit du sie erneut versuchen kannst)
 - Zielordner, Pausen, Parallelität und Suchbefehl konfigurierbar
 - Ergebnis-ZIPs werden nach dem Parsen automatisch gelöscht
 - Läuft in HexChats GTK2 — kein separates Fenster-Management nötig
@@ -150,6 +153,10 @@ Plugin standardmäßig eingestellt und anpassbar.
 - Bei Abschluss wird die Datei in den Zielordner **verschoben**
   (nicht kopiert); ZIP-Archive werden optional **entpackt**.
   Namenskollisionen bekommen automatisch ` (1)`, ` (2)`, … angehängt.
+- **Automatische Abwahl**: Nach erfolgreichem Download wird das Häkchen
+  der Zeile entfernt — du siehst sofort, was noch fehlt. Fehlgeschlagene
+  Downloads bleiben markiert (Status `Fehler`), damit du sie erneut
+  anfordern kannst.
 - Ein Download, der innerhalb des Timeouts (Standard 300 s) keinen
   Empfang startet, wird als Fehler markiert.
 

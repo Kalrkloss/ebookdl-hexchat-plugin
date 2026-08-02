@@ -265,6 +265,22 @@ dl_item['sent_ts'] = 1000.0
 dl_file = os.path.join(TMP, 'completed', 'Book One.pdf')
 with open(dl_file, 'wb') as fh:
     fh.write(b'fake pdf')
+
+# Minimale ListStore-Emulation, um die Checkbox-Abwahl zu prüfen
+class FakeModel(object):
+    def __init__(self, rows):
+        self.rows = rows
+    def get_iter_first(self):
+        return 0 if self.rows else None
+    def iter_next(self, it):
+        return it + 1 if it + 1 < len(self.rows) else None
+    def get_value(self, it, col):
+        return self.rows[it][col]
+    def set_value(self, it, col, val):
+        self.rows[it][col] = val
+
+fm = FakeModel([[True, 'Book One.pdf', '1.0MB', rows[1]['request'], 'artemis_serv', '']])
+p.model = fm
 p.on_dcc_complete(['Book One.pdf', dl_file, 'artemis_serv', '99999'], None, None)
 # Verschieben läuft im Thread -> pollen bis Datei im Ziel liegt
 deadline = realnow() + 5
@@ -277,6 +293,7 @@ while realnow() < deadline:
 check('moved: datei im ziel', os.path.exists(os.path.join(target, 'Book One.pdf')))
 check('moved: status fertig', dl_item['state'] == 'fertig')
 check('moved: zuordnung richtig', dl_item['request'] == rows[1]['request'])
+check('moved: checkbox abgewaehlt', fm.rows[0][0] is False)
 
 # --- 7. Fehlerfall -----------------------------------------------------------
 bad = rows[1]['request']
