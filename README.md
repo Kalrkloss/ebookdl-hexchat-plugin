@@ -215,6 +215,23 @@ standardmäßig um und gibt es nicht auf:
 
 ---
 
+## Sprache
+
+Die Plugin-Oberfläche (Fenster, Buttons, Spalten, Log- und Statusmeldungen)
+folgt automatisch der Sprache von HexChat — Deutsch oder Englisch. Es wird
+dieselbe Locale-Priorität wie bei HexChat/gettext verwendet:
+`LANGUAGE` → `LC_ALL` → `LC_MESSAGES` → `LANG`.
+
+Hinweis: Eine gesetzte `LANGUAGE`-Variable überschreibt `LANG`. Wer
+deutsch starten will, obwohl die System-Locale englisch ist:
+
+    LANGUAGE=de hexchat
+
+bzw. dauerhaft über eine `.desktop`-Datei oder
+`~/.config/environment.d/language.conf` mit `LANGUAGE=de`.
+
+---
+
 ## Fehlerbehebung
 
 | Problem | Lösung |

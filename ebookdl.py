@@ -26,7 +26,6 @@ __module_version__ = "0.1.0"
 __module_description__ = "IRC ebook search & download automation"
 
 import hexchat
-
 import os
 import re
 import sys
@@ -36,6 +35,168 @@ import shutil
 import zipfile
 import threading
 import queue
+
+# -- Sprachunterstützung ------------------------------------------------------
+# Die Sprache wird aus derselben Umgebung gelesen, die HexChat/gettext
+# verwendet (LANGUAGE/LC_ALL/LC_MESSAGES/LANG) - das Plugin folgt damit
+# automatisch der Sprache von HexChat. Unterstützt Deutsch und Englisch.
+
+def detect_lang():
+    for var in ('LANGUAGE', 'LC_ALL', 'LC_MESSAGES', 'LANG'):
+        v = (os.environ.get(var) or '').lower()
+        for part in v.split(':'):
+            part = part.split('.')[0].split('_')[0]
+            if part in ('de', 'deu', 'german'):
+                return 'de'
+            if part in ('en', 'eng'):
+                return 'en'
+    return 'en'
+
+
+LANG = detect_lang()
+
+_TR = {
+    # Fenster, Labels, Buttons
+    'win_title': ('EbookDL - IRC Ebook Suche', 'EbookDL - IRC Ebook Search'),
+    'win_title_settings': ('EbookDL - Einstellungen', 'EbookDL - Settings'),
+    'lbl_channel': ('Kanal:', 'Channel:'),
+    'lbl_search': ('Suche:', 'Search:'),
+    'btn_search': ('Suche starten', 'Start search'),
+    'col_download': ('Download', 'Download'),
+    'col_file': ('Datei', 'File'),
+    'col_type': ('Typ', 'Type'),
+    'col_size': ('Größe', 'Size'),
+    'col_status': ('Status', 'Status'),
+    'btn_all': ('Alle markieren', 'Select all'),
+    'btn_none': ('Keine markieren', 'Select none'),
+    'btn_dl': ('Download starten', 'Start download'),
+    'btn_cancel': ('Wartende abbrechen', 'Cancel waiting'),
+    'btn_settings': ('Einstellungen', 'Settings'),
+    'status_ready': ('Bereit.', 'Ready.'),
+    # Einstellungen
+    'set_channel': ('Kanal (leer = aktueller):', 'Channel (empty = current):'),
+    'set_search_cmd': ('Suchbefehl ({query}):', 'Search command ({query}):'),
+    'set_target': ('Zielordner (Pfad eintragen):', 'Target folder (enter path):'),
+    'set_delay': ('Pause zwischen Anfragen (s):', 'Delay between requests (s):'),
+    'set_max': ('Max. parallele Downloads:', 'Max. parallel downloads:'),
+    'set_timeout': ('Timeout pro Download (s):', 'Download timeout (s):'),
+    'set_search_timeout': ('Timeout Suche (s):', 'Search timeout (s):'),
+    'set_unzip': ('ZIP-Dateien nach dem Download entpacken',
+                  'Unzip files after download'),
+    'set_auto': ('DCC-Dateien während Suche/Download automatisch annehmen',
+                 'Auto-accept DCC files during search/download'),
+    'btn_ok': ('OK', 'OK'),
+    'btn_cancel_short': ('Abbrechen', 'Cancel'),
+    # Log-/Status-Meldungen
+    'log_loaded': ('EbookDL geladen. Fenster mit /ebookdl öffnen.',
+                   'EbookDL loaded. Open the window with /ebookdl.'),
+    'log_unloaded': ('EbookDL entladen.', 'EbookDL unloaded.'),
+    'log_config_error': ('EbookDL: Konfiguration konnte nicht gespeichert werden: %s',
+                         'EbookDL: Could not save configuration: %s'),
+    'log_no_channel': ('FEHLER: Kein Kanal. Bitte in einen Channel wechseln oder Kanal in den Einstellungen setzen.',
+                       'ERROR: No channel. Join a channel or set one in the settings.'),
+    'log_no_channel2': ('FEHLER: Kein Kanal gesetzt (Einstellungen oder aktueller Kanal).',
+                        'ERROR: No channel set (settings or current channel).'),
+    'log_no_channel_dl': ('FEHLER: Kein Kanal gesetzt.', 'ERROR: No channel set.'),
+    'log_no_channel_for': ('FEHLER: Kein Kanal für "%s"', 'ERROR: No channel for "%s"'),
+    'log_enter_query': ('Bitte Suchbegriff eingeben.', 'Please enter a search term.'),
+    'log_search_running': ('Suche läuft bereits - bitte warten.',
+                           'Search already running - please wait.'),
+    'log_search_sent': ('Suche gesendet an %s: %s', 'Search sent to %s: %s'),
+    'status_search_running': ('Suche läuft ...', 'Searching ...'),
+    'log_result_received': ('Ergebnis-Datei wird empfangen: %s (von %s)',
+                            'Result file being received: %s (from %s)'),
+    'status_result_received': ('Ergebnis-Datei wird empfangen ...',
+                               'Receiving result file ...'),
+    'log_result_complete': ('Ergebnis-Datei komplett: %s', 'Result file complete: %s'),
+    'status_parsing': ('Ergebnis wird ausgewertet ...', 'Parsing results ...'),
+    'log_result_not_found': ('FEHLER: Empfangene Datei nicht gefunden: %s',
+                             'ERROR: Received file not found: %s'),
+    'status_result_error': ('Fehler bei Ergebnis-Datei', 'Error with result file'),
+    'log_no_books': ('Keine Bücher markiert.', 'No books selected.'),
+    'log_recv_started': ('Empfang gestartet: %s (von %s)', 'Receiving: %s (from %s)'),
+    'log_zip_deleted': ('Ergebnis-ZIP gelöscht: %s', 'Result ZIP deleted: %s'),
+    'log_zip_delete_warn': ('Warnung: Ergebnis-ZIP konnte nicht gelöscht werden: %s (%s)',
+                            'Warning: could not delete result ZIP: %s (%s)'),
+    'status_queued': ('%d Download(s) in Warteschlange', '%d download(s) queued'),
+    'log_queued': ('%d Download(s) eingereiht (Kanal %s, max. %d parallel, %ds Pause).',
+                   '%d download(s) queued (channel %s, max %d parallel, %ds delay).'),
+    'log_cancelled': ('%d wartende Download(s) abgebrochen.',
+                      '%d waiting download(s) cancelled.'),
+    'status_cancelled': ('%d abgebrochen', '%d cancelled'),
+    'log_dl_failed': ('Download fehlgeschlagen: %s (%s)', 'Download failed: %s (%s)'),
+    'status_dl_failed': ('Download fehlgeschlagen', 'Download failed'),
+    'log_dl_aborted': ('Download abgebrochen: %s', 'Download aborted: %s'),
+    'log_dl_complete': ('Download komplett: %s', 'Download complete: %s'),
+    'log_timeout_search': ('Timeout: Keine Ergebnis-Datei empfangen.',
+                           'Timeout: No result file received.'),
+    'status_search_timeout': ('Suche abgelaufen (Timeout)', 'Search timed out'),
+    'log_sent': ('Angefragt (%s): %s', 'Requested (%s): %s'),
+    'log_timeout_no_answer': ('Timeout: Keine Antwort für "%s"',
+                              'Timeout: No answer for "%s"'),
+    'log_timeout_stall': ('Timeout: Übertragung von "%s" hängt',
+                          'Timeout: Transfer of "%s" stalled'),
+    'log_results_parsed': ('Ergebnis ausgewertet (%s): %d Treffer',
+                           'Results parsed (%s): %d hits'),
+    'status_hits': ('%d Treffer - Bücher markieren und Download starten',
+                    '%d hits - select books and start download'),
+    'log_move_error': ('FEHLER bei %s: %s', 'ERROR with %s: %s'),
+    'status_move_error': ('Fehler beim Verschieben', 'Error moving file'),
+    'log_done': ('Fertig: %s (%s)', 'Done: %s (%s)'),
+    'status_done': ('Fertig: %s', 'Done: %s'),
+    'log_gui_missing': ('EbookDL: GUI-Bindings fehlen (%s). Bitte python3-gi und gir1.2-gtk-2.0 installieren.',
+                        'EbookDL: GUI bindings missing (%s). Please install python3-gi and gir1.2-gtk-2.0.'),
+    'log_settings_saved': ('Einstellungen gespeichert: Zielordner %s, %ds Pause, max. %d parallel',
+                           'Settings saved: target folder %s, %ds delay, max %d parallel'),
+    'log_settings_invalid': ('FEHLER: Ungültige Zahl in den Einstellungen - nicht gespeichert.',
+                             'ERROR: Invalid number in settings - not saved.'),
+    'guard_already': ('EbookDL: Läuft bereits (PID %s) - zweite Instanz wird ignoriert. '
+                      'Zum Neuladen: /ebookdl-Fenster schließen, dann /py unload EbookDL '
+                      'und erneut laden.',
+                      'EbookDL: Already running (PID %s) - second instance ignored. '
+                      'To reload: close the /ebookdl window, then /py unload EbookDL '
+                      'and load again.'),
+    # Parser/Worker-Hinweise
+    'hinweis_no_txt': ('Keine Textdatei im ZIP gefunden: %s',
+                       'No text file found in ZIP: %s'),
+    'hinweis_n_txt': ('%d Textdatei(en) im ZIP', '%d text file(s) in ZIP'),
+    'hinweis_direct': ('Direkte Textdatei', 'Direct text file'),
+    'hinweis_saved': ('gespeichert als %s', 'saved as %s'),
+    'hinweis_read': ('Datei konnte nicht gelesen werden: %s',
+                     'Could not read file: %s'),
+    'hinweis_extracted': ('entpackt nach %s', 'unzipped to %s'),
+    'parse_error': ('Fehler beim Parsen: %s', 'Parse error: %s'),
+    'reason_open': ('Datei konnte nicht geöffnet werden', 'Could not open file'),
+    'err_not_found': ('Datei nicht gefunden: %s', 'File not found: %s'),
+}
+
+# Statusanzeige der Tabellenzeilen (interne Werte bleiben unverändert)
+_STATE_DISPLAY = {
+    'wartend': ('wartend', 'waiting'),
+    'angefragt': ('angefragt', 'requested'),
+    'empfange': ('empfange', 'receiving'),
+    'fertig': ('fertig', 'done'),
+    'Fehler': ('Fehler', 'error'),
+    'Timeout': ('Timeout', 'timeout'),
+    'abgebrochen': ('abgebrochen', 'cancelled'),
+}
+
+
+def t(key):
+    """Übersetzte Zeichenkette für die aktive Sprache."""
+    de, en = _TR[key]
+    return de if LANG == 'de' else en
+
+
+def t_state(status):
+    """Statuswert für die Anzeige übersetzen (interne Werte unangetastet)."""
+    if isinstance(status, str):
+        for key, (de, en) in _STATE_DISPLAY.items():
+            if status == key:
+                return de if LANG == 'de' else en
+            if status.startswith(key + ':'):
+                return (de if LANG == 'de' else en) + status[len(key):]
+    return status
 
 # ---------------------------------------------------------------------------
 # Pure Logik (ohne hexchat/GUI, damit testbar)
@@ -154,17 +315,17 @@ def parse_results_zip(path):
                     except Exception:
                         continue
         if not texts:
-            return [], 'Keine Textdatei im ZIP gefunden: %s' % os.path.basename(path)
-        hinweis = '%d Textdatei(en) im ZIP' % len(texts)
+            return [], t('hinweis_no_txt') % os.path.basename(path)
+        hinweis = t('hinweis_n_txt') % len(texts)
         results = []
-        for t in texts:
-            results.extend(parse_results_text(t))
+        for txt in texts:
+            results.extend(parse_results_text(txt))
         return results, hinweis
     try:
         with open(path, 'rb') as fh:
-            return parse_results_text(decode_text(fh.read())), 'Direkte Textdatei'
+            return parse_results_text(decode_text(fh.read())), t('hinweis_direct')
     except OSError as exc:
-        return [], 'Datei konnte nicht gelesen werden: %s' % exc
+        return [], t('hinweis_read') % exc
 
 
 def normalize_name(name):
@@ -226,10 +387,10 @@ def move_to_target(src, target_dir, unzip):
         with zipfile.ZipFile(src) as zf:
             zf.extractall(subdir)
         os.remove(src)
-        return subdir, 'entpackt nach %s' % subdir
+        return subdir, t('hinweis_extracted') % subdir
     dst = unique_path(target_dir, name)
     shutil.move(src, dst)
-    return dst, 'gespeichert als %s' % dst
+    return dst, t('hinweis_saved') % dst
 
 
 # ---------------------------------------------------------------------------
@@ -280,7 +441,7 @@ class Config(object):
             with open(self.path, 'w', encoding='utf-8') as fh:
                 json.dump(self.data, fh, indent=2, ensure_ascii=False)
         except OSError as exc:
-            hexchat.prnt('EbookDL: Konfiguration konnte nicht gespeichert werden: %s' % exc)
+            hexchat.prnt(t('log_config_error') % exc)
 
     def get(self, key):
         return self.data.get(key, DEFAULT_CONFIG[key])
@@ -325,7 +486,7 @@ class EbookDLPlugin(object):
         hexchat.hook_print('DCC RECV Abort', self.on_dcc_abort)
         hexchat.hook_command('ebookdl', self.on_cmd, help='/ebookdl - Ebook-Suche & Download-Fenster öffnen')
         hexchat.hook_unload(self.on_unload)
-        self.log('EbookDL geladen. Fenster mit /ebookdl öffnen.')
+        self.log(t('log_loaded'))
 
     # -- kleine Helfer ------------------------------------------------------
 
@@ -349,7 +510,7 @@ class EbookDLPlugin(object):
 
     def send_msg(self, channel, text):
         if not channel:
-            self.log('FEHLER: Kein Kanal gesetzt (Einstellungen oder aktueller Kanal).')
+            self.log(t('log_no_channel2'))
             return False
         hexchat.command('MSG %s %s' % (channel, text))
         return True
@@ -377,14 +538,14 @@ class EbookDLPlugin(object):
     def start_search(self, query):
         query = (query or '').strip()
         if not query:
-            self.log('Bitte Suchbegriff eingeben.')
+            self.log(t('log_enter_query'))
             return
         if self.state == STATE_SEARCHING:
-            self.log('Suche läuft bereits - bitte warten.')
+            self.log(t('log_search_running'))
             return
         channel = self.get_channel()
         if not channel:
-            self.log('FEHLER: Kein Kanal. Bitte in einen Channel wechseln oder Kanal in den Einstellungen setzen.')
+            self.log(t('log_no_channel'))
             return
         cmd = self.config.get('search_cmd').format(query=query)
         self.state = STATE_SEARCHING
@@ -393,8 +554,8 @@ class EbookDLPlugin(object):
         self.ensure_auto_accept(True)
         self.clear_results()
         self.send_msg(channel, cmd)
-        self.log('Suche gesendet an %s: %s' % (channel, cmd))
-        self.set_status('Suche läuft ...')
+        self.log(t('log_search_sent') % (channel, cmd))
+        self.set_status(t('status_search_running'))
 
     def on_search_result_file(self, path):
         """Ergebnisdatei empfangen -> im Thread parsen."""
@@ -403,7 +564,7 @@ class EbookDLPlugin(object):
                 results, hinweis = parse_results_zip(path)
                 self.ui_queue.put(('results', results, hinweis, path))
             except Exception as exc:
-                self.ui_queue.put(('results', [], 'Fehler beim Parsen: %s' % exc, path))
+                self.ui_queue.put(('results', [], t('parse_error') % exc, path))
             finally:
                 self._cleanup_result_file(path)
         threading.Thread(target=work, daemon=True).start()
@@ -413,9 +574,9 @@ class EbookDLPlugin(object):
         try:
             if path and os.path.exists(path):
                 os.remove(path)
-                self.log('Ergebnis-ZIP gelöscht: %s' % os.path.basename(path))
+                self.log(t('log_zip_deleted') % os.path.basename(path))
         except Exception as exc:
-            self.log('Warnung: Ergebnis-ZIP konnte nicht gelöscht werden: %s (%s)'
+            self.log(t('log_zip_delete_warn')
                      % (os.path.basename(path) if path else path, exc))
 
     # -- Downloads -----------------------------------------------------------
@@ -436,11 +597,11 @@ class EbookDLPlugin(object):
                 })
             it = self.model.iter_next(it)
         if not rows:
-            self.log('Keine Bücher markiert.')
+            self.log(t('log_no_books'))
             return
         channel = self.get_channel()
         if not channel:
-            self.log('FEHLER: Kein Kanal gesetzt.')
+            self.log(t('log_no_channel_dl'))
             return
         added = 0
         for row in rows:
@@ -464,8 +625,8 @@ class EbookDLPlugin(object):
             added += 1
             self.set_row_status(req, ST_WAIT)
         self.ensure_auto_accept(True)
-        self.set_status('%d Download(s) in Warteschlange' % added)
-        self.log('%d Download(s) eingereiht (Kanal %s, max. %d parallel, %ds Pause).'
+        self.set_status(t('status_queued') % added)
+        self.log(t('log_queued')
                  % (added, channel, self.config.get('max_concurrent'), int(self.config.get('delay'))))
 
     def cancel_queue(self):
@@ -477,9 +638,9 @@ class EbookDLPlugin(object):
                 cancelled += 1
         self.queue = [r for r in self.queue
                       if r not in self.downloads or self.downloads[r]['state'] != ST_CANCEL]
-        self.log('%d wartende Download(s) abgebrochen.' % cancelled)
+        self.log(t('log_cancelled') % cancelled)
         if cancelled:
-            self.set_status('%d abgebrochen' % cancelled)
+            self.set_status(t('status_cancelled') % cancelled)
 
     def set_row_status(self, request, status):
         if self.model is None:
@@ -487,7 +648,7 @@ class EbookDLPlugin(object):
         it = self.model.get_iter_first()
         while it is not None:
             if self.model.get_value(it, 4) == request:
-                self.model.set_value(it, 6, status)
+                self.model.set_value(it, 6, t_state(status))
                 return
             it = self.model.iter_next(it)
 
@@ -525,7 +686,7 @@ class EbookDLPlugin(object):
             if item['state'] == ST_SENT:
                 item['state'] = ST_RECV
                 item['offer_ts'] = time.time()
-                self.log('Empfang gestartet: %s (von %s)' % (item['filename'], nick))
+                self.log(t('log_recv_started') % (item['filename'], nick))
                 self.set_row_status(req, ST_RECV)
             return hexchat.EAT_NONE
         # 2) Sonst: erwartete Ergebnisdatei der Suche?
@@ -534,8 +695,8 @@ class EbookDLPlugin(object):
             if low.endswith(('.zip', '.txt', '.log')):
                 self.pending_result = {'filename': fname, 'nick': nick,
                                        'ts': time.time()}
-                self.log('Ergebnis-Datei wird empfangen: %s (von %s)' % (fname, nick))
-                self.set_status('Ergebnis-Datei wird empfangen ...')
+                self.log(t('log_result_received') % (fname, nick))
+                self.set_status(t('status_result_received'))
         return hexchat.EAT_NONE
 
     def on_dcc_complete(self, word, word_eol, userdata):
@@ -549,13 +710,13 @@ class EbookDLPlugin(object):
                 self.pending_result = None
                 self.state = STATE_IDLE
                 self.ensure_auto_accept(False)
-                self.log('Ergebnis-Datei komplett: %s' % (dest or fname))
-                self.set_status('Ergebnis wird ausgewertet ...')
+                self.log(t('log_result_complete') % (dest or fname))
+                self.set_status(t('status_parsing'))
                 if dest and os.path.exists(dest):
                     self.on_search_result_file(dest)
                 else:
-                    self.log('FEHLER: Empfangene Datei nicht gefunden: %s' % (dest or fname))
-                    self.set_status('Fehler bei Ergebnis-Datei')
+                    self.log(t('log_result_not_found') % (dest or fname))
+                    self.set_status(t('status_result_error'))
                 return hexchat.EAT_NONE
         req = self.match_download(nick, fname)
         if not req:
@@ -579,7 +740,7 @@ class EbookDLPlugin(object):
             elif event_name == 'DCC RECV File Open Error':
                 # [dateiname, fehler]
                 fname = word[0] if len(word) > 0 else ''
-                reason = word[1] if len(word) > 1 else 'Datei konnte nicht geöffnet werden'
+                reason = word[1] if len(word) > 1 else t('reason_open')
             else:  # DCC Stall / DCC Timeout: [typ, dateiname, nick]
                 fname = word[1] if len(word) > 1 else ''
                 nick = word[2] if len(word) > 2 else ''
@@ -590,8 +751,8 @@ class EbookDLPlugin(object):
                 item['state'] = ST_ERR
                 item['error'] = reason
                 self.set_row_status(req, '%s: %s' % (ST_ERR, reason))
-                self.log('Download fehlgeschlagen: %s (%s)' % (item['filename'], reason))
-                self.set_status('Download fehlgeschlagen')
+                self.log(t('log_dl_failed') % (item['filename'], reason))
+                self.set_status(t('status_dl_failed'))
             return hexchat.EAT_NONE
         return handler
 
@@ -605,7 +766,7 @@ class EbookDLPlugin(object):
             item['state'] = ST_ERR
             item['error'] = 'abgebrochen'
             self.set_row_status(req, ST_ERR)
-            self.log('Download abgebrochen: %s' % item['filename'])
+            self.log(t('log_dl_aborted') % item['filename'])
         return hexchat.EAT_NONE
 
     # -- Zuordnung DCC -> Download -------------------------------------------
@@ -642,13 +803,13 @@ class EbookDLPlugin(object):
         item = self.downloads[req]
         if not src or not os.path.exists(src):
             item['state'] = ST_ERR
-            item['error'] = 'Datei nicht gefunden: %s' % (src or '?')
+            item['error'] = t('err_not_found') % (src or '?')
             self.set_row_status(req, ST_ERR)
             self.log('FEHLER: %s' % item['error'])
             return
         item['state'] = ST_DONE
         self.set_row_status(req, ST_DONE)
-        self.log('Download komplett: %s' % item['filename'])
+        self.log(t('log_dl_complete') % item['filename'])
 
         def work():
             try:
@@ -675,11 +836,11 @@ class EbookDLPlugin(object):
         # Such-Timeout
         if self.state == STATE_SEARCHING and \
                 now - self.search_started > self.config.get('search_timeout'):
-            self.log('Timeout: Keine Ergebnis-Datei empfangen.')
+            self.log(t('log_timeout_search'))
             self.state = STATE_IDLE
             self.pending_result = None
             self.ensure_auto_accept(False)
-            self.set_status('Suche abgelaufen (Timeout)')
+            self.set_status(t('status_search_timeout'))
 
         # Downloads: neue Anfragen senden (Netiquette: Pause + Limit)
         # Es wird höchstens EINE Anfrage pro Takt gesendet; der Abstand
@@ -698,14 +859,14 @@ class EbookDLPlugin(object):
                 item['state'] = ST_ERR
                 item['error'] = 'kein Kanal'
                 self.set_row_status(req, ST_ERR)
-                self.log('FEHLER: Kein Kanal für "%s"' % item['filename'])
+                self.log(t('log_no_channel_for') % item['filename'])
             else:
                 channel = self.get_channel()
                 hexchat.command('MSG %s %s' % (channel, item['request']))
                 item['state'] = ST_SENT
                 item['sent_ts'] = now
                 self.set_row_status(req, ST_SENT)
-                self.log('Angefragt (%s): %s' % (channel, item['filename']))
+                self.log(t('log_sent') % (channel, item['filename']))
                 self.next_send_ts = now + float(self.config.get('delay'))
 
         # Timeouts pro Download
@@ -713,12 +874,12 @@ class EbookDLPlugin(object):
             if item['state'] == ST_SENT and now - item['sent_ts'] > self.config.get('timeout'):
                 item['state'] = ST_TOUT
                 self.set_row_status(req, ST_TOUT)
-                self.log('Timeout: Keine Antwort für "%s"' % item['filename'])
+                self.log(t('log_timeout_no_answer') % item['filename'])
             elif item['state'] == ST_RECV and item.get('offer_ts') and \
                     now - item['offer_ts'] > self.config.get('timeout'):
                 item['state'] = ST_TOUT
                 self.set_row_status(req, ST_TOUT)
-                self.log('Timeout: Übertragung von "%s" hängt' % item['filename'])
+                self.log(t('log_timeout_stall') % item['filename'])
 
         # Fortschritt der laufenden Übertragungen
         self.update_progress()
@@ -766,7 +927,7 @@ class EbookDLPlugin(object):
         kind = msg[0]
         if kind == 'results':
             _, results, hinweis, path = msg
-            self.log('Ergebnis ausgewertet (%s): %d Treffer' % (hinweis, len(results)))
+            self.log(t('log_results_parsed') % (hinweis, len(results)))
             self.results = list(results)
             if self.model is not None:
                 self.model.clear()
@@ -776,21 +937,21 @@ class EbookDLPlugin(object):
                                        r['size'], r['request'], r['botnick'], '',
                                        float(r.get('size_bytes') or 0.0),
                                        r['filename'].lower()])
-            self.set_status('%d Treffer - Bücher markieren und Download starten' % len(results))
+            self.set_status(t('status_hits') % len(results))
         elif kind == 'moved':
             _, req, final, hinweis, error = msg
             item = self.downloads.get(req)
             if error:
                 item['state'] = ST_ERR
                 self.set_row_status(req, '%s: %s' % (ST_ERR, error))
-                self.log('FEHLER bei %s: %s' % (item['filename'], error))
-                self.set_status('Fehler beim Verschieben')
+                self.log(t('log_move_error') % (item['filename'], error))
+                self.set_status(t('status_move_error'))
             else:
                 item['path'] = final
                 self.set_row_status(req, '%s: %s' % (ST_DONE, final))
                 self.set_row_checked(req, False)
-                self.log('Fertig: %s (%s)' % (item['filename'], hinweis))
-                self.set_status('Fertig: %s' % os.path.basename(final))
+                self.log(t('log_done') % (item['filename'], hinweis))
+                self.set_status(t('status_done') % os.path.basename(final))
 
     # -- GUI ------------------------------------------------------------------
 
@@ -806,12 +967,12 @@ class EbookDLPlugin(object):
             gi.require_version('Gtk', '2.0')
             from gi.repository import Gtk, Pango
         except Exception as exc:
-            hexchat.prnt('EbookDL: GUI-Bindings fehlen (%s). Bitte python3-gi und gir1.2-gtk-2.0 installieren.' % exc)
+            hexchat.prnt(t('log_gui_missing') % exc)
             return
         self.Gtk = Gtk
 
         win = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
-        win.set_title('EbookDL - IRC Ebook Suche')
+        win.set_title(t('win_title'))
         win.set_default_size(940, 660)
         win.set_border_width(6)
         win.connect('delete-event', self.on_close)
@@ -821,17 +982,17 @@ class EbookDLPlugin(object):
         # -- Kopfzeile: Kanal + Suche
         head = Gtk.HBox(homogeneous=False, spacing=4)
         lbl_ch = Gtk.Label()
-        lbl_ch.set_text('Kanal:')
+        lbl_ch.set_text(t('lbl_channel'))
         self.entry_channel = Gtk.Entry()
         self.entry_channel.set_width_chars(14)
         self.entry_channel.set_text(self.config.get('channel'))
         lbl_q = Gtk.Label()
-        lbl_q.set_text('Suche:')
+        lbl_q.set_text(t('lbl_search'))
         self.entry_search = Gtk.Entry()
         self.entry_search.set_width_chars(40)
         self.entry_search.connect('activate', lambda *a: self.start_search(self.entry_search.get_text()))
         btn_search = Gtk.Button()
-        btn_search.set_label('Suche starten')
+        btn_search.set_label(t('btn_search'))
         btn_search.connect('clicked', lambda *a: self.start_search(self.entry_search.get_text()))
         head.pack_start(lbl_ch, False, False, 0)
         head.pack_start(self.entry_channel, False, False, 0)
@@ -857,23 +1018,23 @@ class EbookDLPlugin(object):
         rend_toggle = Gtk.CellRendererToggle()
         rend_toggle.set_property('activatable', True)
         rend_toggle.connect('toggled', self.on_toggle)
-        col_toggle = Gtk.TreeViewColumn('Download', rend_toggle, active=0)
+        col_toggle = Gtk.TreeViewColumn(t('col_download'), rend_toggle, active=0)
         col_toggle.set_fixed_width(70)
         tree.append_column(col_toggle)
-        col_name = Gtk.TreeViewColumn('Datei', Gtk.CellRendererText(), text=1)
+        col_name = Gtk.TreeViewColumn(t('col_file'), Gtk.CellRendererText(), text=1)
         col_name.set_sort_column_id(8)  # case-insensitive über Klein-Name
         col_name.set_resizable(True)    # linken Rand von "Typ" ziehbar -> Datei passt sich an
         col_name.set_min_width(80)
         tree.append_column(col_name)
-        col_type = Gtk.TreeViewColumn('Typ', Gtk.CellRendererText(), text=2)
+        col_type = Gtk.TreeViewColumn(t('col_type'), Gtk.CellRendererText(), text=2)
         col_type.set_sort_column_id(2)
         col_type.set_fixed_width(70)
         tree.append_column(col_type)
-        col_size = Gtk.TreeViewColumn('Größe', Gtk.CellRendererText(), text=3)
+        col_size = Gtk.TreeViewColumn(t('col_size'), Gtk.CellRendererText(), text=3)
         col_size.set_sort_column_id(7)  # numerisch nach Bytes
         col_size.set_fixed_width(90)
         tree.append_column(col_size)
-        col_status = Gtk.TreeViewColumn('Status', Gtk.CellRendererText(), text=6)
+        col_status = Gtk.TreeViewColumn(t('col_status'), Gtk.CellRendererText(), text=6)
         col_status.set_fixed_width(240)
         tree.append_column(col_status)
         sw = Gtk.ScrolledWindow()
@@ -884,19 +1045,19 @@ class EbookDLPlugin(object):
         # -- Aktionsleiste
         bar = Gtk.HBox(homogeneous=False, spacing=4)
         btn_all = Gtk.Button()
-        btn_all.set_label('Alle markieren')
+        btn_all.set_label(t('btn_all'))
         btn_all.connect('clicked', lambda *a: self.set_all_checked(True))
         btn_none = Gtk.Button()
-        btn_none.set_label('Keine markieren')
+        btn_none.set_label(t('btn_none'))
         btn_none.connect('clicked', lambda *a: self.set_all_checked(False))
         btn_dl = Gtk.Button()
-        btn_dl.set_label('Download starten')
+        btn_dl.set_label(t('btn_dl'))
         btn_dl.connect('clicked', lambda *a: self.start_downloads())
         btn_cancel = Gtk.Button()
-        btn_cancel.set_label('Wartende abbrechen')
+        btn_cancel.set_label(t('btn_cancel'))
         btn_cancel.connect('clicked', lambda *a: self.cancel_queue())
         btn_cfg = Gtk.Button()
-        btn_cfg.set_label('Einstellungen')
+        btn_cfg.set_label(t('btn_settings'))
         btn_cfg.connect('clicked', lambda *a: self.settings_dialog())
         bar.pack_start(btn_all, False, False, 0)
         bar.pack_start(btn_none, False, False, 0)
@@ -911,7 +1072,7 @@ class EbookDLPlugin(object):
         vbox.pack_start(self.progress, False, False, 0)
 
         self.label_status = Gtk.Label()
-        self.label_status.set_text('Bereit.')
+        self.label_status.set_text(t('status_ready'))
         self.label_status.set_alignment(0.0, 0.5)
         vbox.pack_start(self.label_status, False, False, 0)
 
@@ -969,7 +1130,7 @@ class EbookDLPlugin(object):
     def settings_dialog(self):
         Gtk = self.Gtk
         win = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
-        win.set_title('EbookDL - Einstellungen')
+        win.set_title(t('win_title_settings'))
         win.set_default_size(520, -1)
         win.set_border_width(8)
         win.connect('delete-event', self.on_settings_close)
@@ -990,39 +1151,39 @@ class EbookDLPlugin(object):
 
         e_channel = Gtk.Entry()
         e_channel.set_text(self.config.get('channel'))
-        row('Kanal (leer = aktueller):', e_channel)
+        row(t('set_channel'), e_channel)
 
         e_search = Gtk.Entry()
         e_search.set_text(self.config.get('search_cmd'))
-        row('Suchbefehl ({query}):', e_search)
+        row(t('set_search_cmd'), e_search)
 
         e_target = Gtk.Entry()
         e_target.set_text(self.config.get('target_dir'))
-        row('Zielordner (Pfad eintragen):', e_target)
+        row(t('set_target'), e_target)
 
         e_delay = Gtk.Entry()
         e_delay.set_text(str(int(self.config.get('delay'))))
-        row('Pause zwischen Anfragen (s):', e_delay)
+        row(t('set_delay'), e_delay)
 
         e_max = Gtk.Entry()
         e_max.set_text(str(int(self.config.get('max_concurrent'))))
-        row('Max. parallele Downloads:', e_max)
+        row(t('set_max'), e_max)
 
         e_to = Gtk.Entry()
         e_to.set_text(str(int(self.config.get('timeout'))))
-        row('Timeout pro Download (s):', e_to)
+        row(t('set_timeout'), e_to)
 
         e_so = Gtk.Entry()
         e_so.set_text(str(int(self.config.get('search_timeout'))))
-        row('Timeout Suche (s):', e_so)
+        row(t('set_search_timeout'), e_so)
 
         c_unzip = Gtk.CheckButton()
-        c_unzip.set_label('ZIP-Dateien nach dem Download entpacken')
+        c_unzip.set_label(t('set_unzip'))
         c_unzip.set_active(bool(self.config.get('unzip')))
         box.pack_start(c_unzip, False, False, 2)
 
         c_auto = Gtk.CheckButton()
-        c_auto.set_label('DCC-Dateien während Suche/Download automatisch annehmen')
+        c_auto.set_label(t('set_auto'))
         c_auto.set_active(bool(self.config.get('auto_accept')))
         box.pack_start(c_auto, False, False, 2)
 
@@ -1046,21 +1207,21 @@ class EbookDLPlugin(object):
                 self.config.save()
                 if self.entry_channel is not None:
                     self.entry_channel.set_text(self.config.get('channel'))
-                self.log('Einstellungen gespeichert: Zielordner %s, %ds Pause, max. %d parallel'
+                self.log(t('log_settings_saved')
                          % (self.config.get('target_dir'), int(self.config.get('delay')),
                             self.config.get('max_concurrent')))
             except ValueError:
-                self.log('FEHLER: Ungültige Zahl in den Einstellungen - nicht gespeichert.')
+                self.log(t('log_settings_invalid'))
             win.destroy()
 
         def on_cancel(*a):
             win.destroy()
 
         btn_ok = Gtk.Button()
-        btn_ok.set_label('OK')
+        btn_ok.set_label(t('btn_ok'))
         btn_ok.connect('clicked', on_ok)
         btn_cancel = Gtk.Button()
-        btn_cancel.set_label('Abbrechen')
+        btn_cancel.set_label(t('btn_cancel_short'))
         btn_cancel.connect('clicked', on_cancel)
         btnrow.pack_start(btn_ok, True, True, 0)
         btnrow.pack_start(btn_cancel, True, True, 0)
@@ -1082,7 +1243,7 @@ class EbookDLPlugin(object):
     def on_unload(self, userdata):
         self.ensure_auto_accept(False)
         release_single_instance()
-        hexchat.prnt('EbookDL entladen.')
+        hexchat.prnt(t('log_unloaded'))
 
 
 # -- Einzelinstanz-Schutz -----------------------------------------------------
@@ -1118,9 +1279,7 @@ def acquire_single_instance():
         except OSError:
             # z. B. EPERM: Prozess existiert, nur keine Rechte -> lebt -> blocken
             pass
-        hexchat.prnt('EbookDL: Läuft bereits (PID %s) - zweite Instanz wird ignoriert. '
-                     'Zum Neuladen: /ebookdl-Fenster schließen, dann /py unload EbookDL '
-                     'und erneut laden.' % pid)
+        hexchat.prnt(t('guard_already') % pid)
         return False
     except Exception:
         # Ohne Plugin-Prefs (z. B. Test-Harness) kein Schutz, aber kein Bruch

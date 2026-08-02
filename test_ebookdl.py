@@ -137,7 +137,7 @@ with zipfile.ZipFile(zip_path, 'w') as zf:
     zf.writestr('readme.nfo', 'irrelevant')
 results, hint = parse_results_zip(zip_path)
 check('zip: 2 results', len(results) == 2)
-check('zip: hint', hint is not None and 'Textdatei' in hint)
+check('zip: hint', hint is not None and ('Textdatei' in hint or 'text file' in hint))
 
 txt_path = os.path.join(TMP, 'direct.txt')
 with open(txt_path, 'w', encoding='utf-8') as fh:
@@ -171,7 +171,7 @@ with zipfile.ZipFile(dl_zip, 'w') as zf:
 final, hint3 = move_to_target(dl_zip, target, True)
 check('move: zip entfernt', not os.path.exists(dl_zip))
 check('move: entpackt', os.path.exists(os.path.join(final, 'book.epub')))
-check('move: hint', 'entpackt' in hint3)
+check('move: hint', 'entpackt' in hint3 or 'unzipped' in hint3)
 
 # Datei verschieben + Kollision
 f1 = os.path.join(TMP, 'plain.pdf')
@@ -368,8 +368,31 @@ check('single: release loescht eigenen Marker',
 # main(): bei lebendem Fremd-Marker blockiert es und meldet sich
 stub.pluginprefs['ebookdl_running'] = os.getpid()
 check('single: main blockiert zweite Instanz',
-      ebookdl.main() is None and stub.prints and 'bereits' in stub.prints[-1])
+      ebookdl.main() is None and stub.prints and 'EbookDL' in stub.prints[-1])
 ebookdl.release_single_instance()
+
+# --- 10. Spracherkennung -----------------------------------------------------
+_orig_lang = {k: os.environ.get(k) for k in ('LANGUAGE', 'LC_ALL', 'LC_MESSAGES', 'LANG')}
+def _setenv(**kw):
+    for k in ('LANGUAGE', 'LC_ALL', 'LC_MESSAGES', 'LANG'):
+        os.environ.pop(k, None)
+    os.environ.update({k: v for k, v in kw.items() if v is not None})
+
+_setenv(LANG='de_DE.UTF-8')
+check('lang: de aus LANG', ebookdl.detect_lang() == 'de')
+_setenv(LANGUAGE='en_US', LANG='de_DE.UTF-8')
+check('lang: LANGUAGE hat Vorrang', ebookdl.detect_lang() == 'en')
+_setenv(LANGUAGE='de:en', LANG='en_US.UTF-8')
+check('lang: Prioritätsliste de:en', ebookdl.detect_lang() == 'de')
+_setenv(LANG='en_US.UTF-8')
+check('lang: en default', ebookdl.detect_lang() == 'en')
+_setenv()
+check('lang: leer -> en', ebookdl.detect_lang() == 'en')
+for k, v in _orig_lang.items():
+    if v is None:
+        os.environ.pop(k, None)
+    else:
+        os.environ[k] = v
 
 # --- Ende --------------------------------------------------------------------
 shutil.rmtree(TMP, ignore_errors=True)
