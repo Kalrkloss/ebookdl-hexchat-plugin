@@ -211,6 +211,31 @@ active sort.
 
 ---
 
+## Conversion (Calibre)
+
+After a download, the plugin can automatically convert the book to
+**EPUB**, **MOBI** or **PDF** — useful because many books in the bookz
+networks are distributed as `.lit` or other formats.
+
+- Set the target format in the settings (**Conversion** option).
+- Conversion runs after the file has been moved to the target folder.
+- Only ebook files are converted (archives are never touched), and only
+  if the target format differs from the source format.
+- If the conversion fails, the original file stays untouched and the
+  error is shown in the log.
+
+**Dependency:** the conversion requires [Calibre](https://calibre-ebook.com)
+and its `ebook-convert` command line tool. If Calibre is not installed,
+the format selection in the settings is greyed out and a hint is shown.
+
+Install Calibre on Debian/Ubuntu/Mint:
+
+    sudo apt install calibre
+
+or download it from the [Calibre website](https://calibre-ebook.com/download).
+
+---
+
 ## Netiquette & queue
 
 The bookz networks expect polite behaviour. EbookDL enforces this by
