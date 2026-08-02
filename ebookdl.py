@@ -1057,10 +1057,64 @@ class EbookDLPlugin(object):
 
     def on_unload(self, userdata):
         self.ensure_auto_accept(False)
+        release_single_instance()
         hexchat.prnt('EbookDL entladen.')
 
 
+# -- Einzelinstanz-Schutz -----------------------------------------------------
+#
+# Verhindert, dass das Plugin mehrfach geladen wird (Autoload + /py load +
+# /py reload aus verschiedenen Pfaden erzeugen sonst mehrere Instanzen mit
+# eigenen Fenstern, Hooks und Timern). Als Marker dienen die HexChat-
+# Plugin-Prefs mit der PID des Besitzers; ein verwaister Marker
+# (abgestürzte Instanz oder Neustart) wird erkannt und übernommen.
+# Hinweis: Alle Python-Skripte teilen die Prefs des python-Plugins
+# (addon_python.conf) - deshalb ein eindeutiger Key.
+
+SINGLE_INSTANCE_KEY = 'ebookdl_running'
+
+
+def acquire_single_instance():
+    """True, wenn diese Instanz laufen darf (sonst: Meldung + False)."""
+    try:
+        pid = hexchat.get_pluginpref(SINGLE_INSTANCE_KEY)
+        if pid is None:
+            hexchat.set_pluginpref(SINGLE_INSTANCE_KEY, os.getpid())
+            return True
+        try:
+            os.kill(int(pid), 0)  # lebt der Besitzer noch?
+        except ProcessLookupError:
+            # Marker verwaist (Prozess weg) -> übernehmen
+            hexchat.set_pluginpref(SINGLE_INSTANCE_KEY, os.getpid())
+            return True
+        except (ValueError, TypeError):
+            # kaputter Marker -> übernehmen
+            hexchat.set_pluginpref(SINGLE_INSTANCE_KEY, os.getpid())
+            return True
+        except OSError:
+            # z. B. EPERM: Prozess existiert, nur keine Rechte -> lebt -> blocken
+            pass
+        hexchat.prnt('EbookDL: Läuft bereits (PID %s) - zweite Instanz wird ignoriert. '
+                     'Zum Neuladen: /ebookdl-Fenster schließen, dann /py unload EbookDL '
+                     'und erneut laden.' % pid)
+        return False
+    except Exception:
+        # Ohne Plugin-Prefs (z. B. Test-Harness) kein Schutz, aber kein Bruch
+        return True
+
+
+def release_single_instance():
+    """Marker entfernen, wenn er dieser Instanz gehört."""
+    try:
+        if hexchat.get_pluginpref(SINGLE_INSTANCE_KEY) == os.getpid():
+            hexchat.del_pluginpref(SINGLE_INSTANCE_KEY)
+    except Exception:
+        pass
+
+
 def main():
+    if not acquire_single_instance():
+        return
     EbookDLPlugin()
 
 

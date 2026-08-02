@@ -22,6 +22,7 @@ class StubHexchat:
     def __init__(self):
         self.commands = []
         self.prints = []
+        self.pluginprefs = {}
         self.prefs = {'dcc_auto_recv': 1,
                       'dcc_dir': os.path.join(TMP, 'dcc'),
                       'dcc_completed_dir': os.path.join(TMP, 'completed')}
@@ -51,12 +52,23 @@ class StubHexchat:
     def hook_unload(self, *a):
         return 1
 
+    def get_pluginpref(self, name):
+        return self.pluginprefs.get(name)
+
+    def set_pluginpref(self, name, value):
+        self.pluginprefs[name] = value
+        return True
+
+    def del_pluginpref(self, name):
+        return self.pluginprefs.pop(name, None) is not None
+
 
 stub = StubHexchat()
 sys.modules['hexchat'] = stub
 sys.path.insert(0, BASE)
 
 import ebookdl
+ebookdl.release_single_instance()  # Import-löst main() aus -> Marker zurücksetzen
 from ebookdl import (parse_result_line, parse_results_text, parse_results_zip,
                      nick_matches, name_matches, move_to_target, unique_path,
                      format_bytes, parse_size)
@@ -314,6 +326,31 @@ check('fmt: bytes', format_bytes(1048576) == '1.00 MB')
 check('parse_size: MB', abs(parse_size('49.78MB') - 49.78 * 1024 * 1024) < 1)
 check('parse_size: GB', abs(parse_size('1.5 GB') - 1.5 * 1024 ** 3) < 1)
 check('parse_size: nix', parse_size('abc') == 0.0)
+
+# --- 9. Einzelinstanz-Schutz --------------------------------------------------
+check('single: marker anfangs frei',
+      ebookdl.acquire_single_instance() is True and stub.pluginprefs.get('ebookdl_running') == os.getpid())
+check('single: zweite Instanz blockiert',
+      ebookdl.acquire_single_instance() is False)
+# Verwaister Marker (tote PID) -> wird übernommen
+stub.pluginprefs['ebookdl_running'] = 999999999
+check('single: verwaister Marker uebernommen',
+      ebookdl.acquire_single_instance() is True and stub.pluginprefs.get('ebookdl_running') == os.getpid())
+# Marker einer ANDEREN (lebenden) PID -> blockiert
+stub.pluginprefs['ebookdl_running'] = 1  # PID 1 (init) lebt praktisch immer
+check('single: fremder Marker blockiert', ebookdl.acquire_single_instance() is False)
+ebookdl.release_single_instance()
+check('single: release loescht nur eigenen Marker',
+      stub.pluginprefs.get('ebookdl_running') == 1)
+stub.pluginprefs['ebookdl_running'] = os.getpid()
+ebookdl.release_single_instance()
+check('single: release loescht eigenen Marker',
+      'ebookdl_running' not in stub.pluginprefs)
+# main(): bei lebendem Fremd-Marker blockiert es und meldet sich
+stub.pluginprefs['ebookdl_running'] = os.getpid()
+check('single: main blockiert zweite Instanz',
+      ebookdl.main() is None and stub.prints and 'bereits' in stub.prints[-1])
+ebookdl.release_single_instance()
 
 # --- Ende --------------------------------------------------------------------
 shutil.rmtree(TMP, ignore_errors=True)

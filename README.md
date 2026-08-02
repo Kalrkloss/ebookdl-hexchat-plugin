@@ -35,6 +35,9 @@ Plugin standardmäßig eingestellt und anpassbar.
   damit du sie erneut versuchen kannst)
 - Zielordner, Pausen, Parallelität und Suchbefehl konfigurierbar
 - Ergebnis-ZIPs werden nach dem Parsen automatisch gelöscht
+- **Einzelinstanz-Schutz**: Das Plugin kann nur einmal geladen werden —
+  weitere Ladungen (auch aus anderen Pfaden) werden mit einer Meldung
+  abgewiesen, keine doppelten Fenster/Hooks
 - Läuft in HexChats GTK2 — kein separates Fenster-Management nötig
 
 ---
@@ -215,7 +218,7 @@ standardmäßig um und gibt es nicht auf:
 | Ergebnis-ZIP kommt an, aber keine Treffer | Ergebnisdatei nicht gefunden oder Parse-Fehler — Log beachten; ggf. Timeout erhöhen. |
 | Downloads bleiben bei *angefragt* | Bot hat nicht geantwortet (offline/anderer Name). Timeout markiert die Zeile als Fehler; prüfen, ob der Bot im Kanal aktiv ist. |
 | Datei landet nicht im Zielordner | Zielordner in den Einstellungen prüfen (Schreibrechte); das Plugin verschiebt nur nach erfolgreichem DCC-Empfang. |
-| Mehrere EbookDL-Fenster nach Reloads | `/py unload EbookDL` + `/py load …` oder HexChat neu starten (bekanntes Verhalten nach `/py reload`). |
+| Mehrere EbookDL-Fenster nach Reloads | Seit Version mit Einzelinstanz-Schutz nur noch eine Instanz möglich. Zum bewussten Neuladen: EbookDL-Fenster schließen, dann `/py unload EbookDL` und `/py load /pfad/ebookdl.py`. |
 
 ---
 
