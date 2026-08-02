@@ -438,6 +438,54 @@ for k, v in _orig_lang.items():
     else:
         os.environ[k] = v
 
+# --- 11. Konvertierung (Calibre) ---------------------------------------------
+check('convert: default aus', ebookdl.DEFAULT_CONFIG['convert_format'] == '')
+check('convert: formate', ebookdl.CONVERT_FORMATS == ['', 'epub', 'mobi', 'pdf'])
+check('convert: is_ebook ja', ebookdl.is_ebook_file('Buch.lit')
+      and ebookdl.is_ebook_file('b.epub') and ebookdl.is_ebook_file('C.PDF'))
+check('convert: is_ebook nein', not ebookdl.is_ebook_file('archiv.zip')
+      and not ebookdl.is_ebook_file('Buch.epub.gz') and not ebookdl.is_ebook_file('x.7z'))
+
+# Fake-ebook-convert: kopiert die Datei in das Zielformat (rc=0)
+fake_exe = os.path.join(TMP, 'ebook-convert')
+with open(fake_exe, 'w') as fh:
+    fh.write('#!/bin/sh\ncp "$1" "$2"\n')
+os.chmod(fake_exe, 0o755)
+lit_file = os.path.join(TMP, 'completed', 'Buch.lit')
+with open(lit_file, 'wb') as fh:
+    fh.write(b'lit content')
+conv_dst = ebookdl.convert_ebook(lit_file, 'epub', ebook_convert=fake_exe)
+check('convert: zielpfad', conv_dst.endswith('.epub') and conv_dst != lit_file)
+check('convert: datei da', os.path.exists(conv_dst))
+
+# Fehlschlag (rc!=0)
+fail_exe = os.path.join(TMP, 'ebook-convert-fail')
+with open(fail_exe, 'w') as fh:
+    fh.write('#!/bin/sh\nexit 3\n')
+os.chmod(fail_exe, 0o755)
+try:
+    ebookdl.convert_ebook(lit_file, 'mobi', ebook_convert=fail_exe)
+    check('convert: fehlerfall', False)
+except RuntimeError:
+    check('convert: fehlerfall', True)
+
+# Calibre fehlt komplett (which findet nichts -> RuntimeError)
+_orig_which = shutil.which
+shutil.which = lambda name: None
+try:
+    ebookdl.convert_ebook(lit_file, 'epub')
+    check('convert: calibre fehlt', False)
+except RuntimeError:
+    check('convert: calibre fehlt', True)
+finally:
+    shutil.which = _orig_which
+check('convert: calibre_available nein',
+      ebookdl.calibre_available() is (shutil.which('ebook-convert') is not None))
+
+# Zielformat == Quellformat -> kein Aufruf noetig
+same = ebookdl.convert_ebook(lit_file, 'lit', ebook_convert='/nonexistent/ebook-convert')
+check('convert: gleiches format', same == lit_file)
+
 # --- Ende --------------------------------------------------------------------
 shutil.rmtree(TMP, ignore_errors=True)
 print('\n%d passed, %d failed' % (passed, failed))

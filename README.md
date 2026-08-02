@@ -208,6 +208,7 @@ zeigt die aktive Sortierung.
 | Download-Timeout     | 300 s                       | Abbruch, wenn kein Empfang beginnt                    |
 | Such-Timeout         | 180 s                       | Abbruch der Suche ohne Ergebnisdatei                  |
 | ZIP entpacken        | an                          | Archive im Zielordner automatisch entpacken           |
+| Konvertierung        | aus                         | Nach dem Download automatisch nach **EPUB**, **MOBI** oder **PDF** konvertieren (Calibre). Ist `ebook-convert` nicht installiert, ist die Auswahl ausgegraut und ein Hinweis erscheint (`sudo apt install calibre`). Konvertierung läuft nach dem Verschieben; Fehlschläge lassen die Originaldatei unangetastet. |
 
 ---
 

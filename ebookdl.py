@@ -90,6 +90,20 @@ _TR = {
                   'Unzip files after download'),
     'set_auto': ('DCC-Dateien während Suche/Download automatisch annehmen',
                  'Auto-accept DCC files during search/download'),
+    'set_convert': ('Nach dem Download konvertieren (Calibre):',
+                    'Convert after download (Calibre):'),
+    'conv_off': ('Keine Konvertierung', 'No conversion'),
+    'conv_epub': ('EPUB', 'EPUB'),
+    'conv_mobi': ('MOBI', 'MOBI'),
+    'conv_pdf': ('PDF', 'PDF'),
+    'conv_missing': ('Calibre nicht gefunden - Konvertierung deaktiviert. '
+                     'Installation: sudo apt install calibre',
+                     'Calibre not found - conversion disabled. '
+                     'Install with: sudo apt install calibre'),
+    'log_convert_ok': ('Konvertiert nach %s (Calibre)',
+                       'Converted to %s (Calibre)'),
+    'log_convert_fail': ('Konvertierung fehlgeschlagen: %s',
+                         'Conversion failed: %s'),
     'btn_ok': ('OK', 'OK'),
     'btn_cancel_short': ('Abbrechen', 'Cancel'),
     # Log-/Status-Meldungen
@@ -480,6 +494,43 @@ def _decompress_single(src, target_dir):
     return dst
 
 
+# -- Konvertierung (Calibre) -------------------------------------------------
+
+# E-Book-Endungen, die an Calibre durchgereicht werden können
+EBOOK_EXTS = ('.epub', '.mobi', '.azw', '.azw3', '.lit', '.fb2', '.prc',
+              '.pdb', '.pdf', '.djvu', '.txt', '.html', '.htm', '.rtf',
+              '.doc', '.docx', '.odt')
+
+# Zielformate der Konvertierungs-Einstellung (Index im ComboBox)
+CONVERT_FORMATS = ['', 'epub', 'mobi', 'pdf']
+
+
+def is_ebook_file(path):
+    """Ist die Datei ein konvertierbares E-Book (kein Archiv)?"""
+    return (path or '').lower().endswith(EBOOK_EXTS)
+
+
+def calibre_available():
+    return shutil.which('ebook-convert') is not None
+
+
+def convert_ebook(src, target_format, ebook_convert=None):
+    """E-Book mit Calibre (ebook-convert) konvertieren.
+    Liefert den Zielpfad; wirft RuntimeError, wenn Calibre fehlt oder der
+    Aufruf fehlschlägt."""
+    exe = ebook_convert or shutil.which('ebook-convert')
+    if not exe:
+        raise RuntimeError(t('conv_missing'))
+    dst = '%s.%s' % (os.path.splitext(src)[0], target_format)
+    if os.path.normcase(os.path.abspath(dst)) == os.path.normcase(os.path.abspath(src)):
+        return src  # Zielformat == Quellformat
+    rc = subprocess.call([exe, src, dst],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if rc != 0:
+        raise RuntimeError('ebook-convert rc=%d' % rc)
+    return dst
+
+
 # ---------------------------------------------------------------------------
 # Konfiguration
 # ---------------------------------------------------------------------------
@@ -494,6 +545,7 @@ DEFAULT_CONFIG = {
     'search_timeout': 180,    # Timeout bis zur Ergebnis-Datei (Sekunden)
     'unzip': True,            # ZIPs nach dem Download entpacken
     'auto_accept': True,      # DCC während Suche/Download automatisch annehmen
+    'convert_format': '',     # '' | epub | mobi | pdf (Calibre-Konvertierung)
 }
 
 STATE_IDLE = 'idle'
@@ -564,6 +616,8 @@ class EbookDLPlugin(object):
         self.log_buffer = None
         self.progress = None
         self.label_status = None
+        self.conv_combo = None
+        self.conv_hint = None
 
         self.timer = hexchat.hook_timer(1000, self.on_timer)
         hexchat.hook_print('DCC RECV Connect', self.on_dcc_connect)
@@ -903,6 +957,17 @@ class EbookDLPlugin(object):
             try:
                 final, hinweis = move_to_target(src, self.config.get('target_dir'),
                                                 self.config.get('unzip'))
+                # Optionale Konvertierung (Calibre) nach dem Verschieben
+                fmt = self.config.get('convert_format')
+                if fmt and final and os.path.isfile(final) and is_ebook_file(final):
+                    try:
+                        conv = convert_ebook(final, fmt)
+                        if conv != final:
+                            final = conv
+                            hinweis = '%s | %s' % (hinweis,
+                                                   t('log_convert_ok') % fmt.upper())
+                    except Exception as exc:
+                        hinweis = '%s | %s' % (hinweis, t('log_convert_fail') % exc)
                 self.ui_queue.put(('moved', req, final, hinweis, None))
             except Exception as exc:
                 self.ui_queue.put(('moved', req, None, None, str(exc)))
@@ -1303,6 +1368,29 @@ class EbookDLPlugin(object):
         c_auto.set_active(bool(self.config.get('auto_accept')))
         box.pack_start(c_auto, False, False, 2)
 
+        # Konvertierung (Calibre)
+        lbl_conv = Gtk.Label()
+        lbl_conv.set_text(t('set_convert'))
+        lbl_conv.set_alignment(0.0, 0.5)
+        box.pack_start(lbl_conv, False, False, 2)
+        self.conv_combo = Gtk.ComboBoxText()
+        for fmt in CONVERT_FORMATS:
+            self.conv_combo.append_text(t('conv_' + (fmt or 'off')))
+        try:
+            self.conv_combo.set_active(CONVERT_FORMATS.index(self.config.get('convert_format')))
+        except ValueError:
+            self.conv_combo.set_active(0)
+        box.pack_start(self.conv_combo, False, False, 2)
+        self.conv_hint = Gtk.Label()
+        self.conv_hint.set_alignment(0.0, 0.5)
+        self.conv_hint.set_line_wrap(True)
+        if calibre_available():
+            self.conv_hint.set_text('')
+        else:
+            self.conv_hint.set_text(t('conv_missing'))
+            self.conv_combo.set_sensitive(False)  # Optionen ausgrauen
+        box.pack_start(self.conv_hint, False, False, 2)
+
         # -- OK / Abbrechen
         btnrow = Gtk.HBox(homogeneous=False, spacing=8)
 
@@ -1320,6 +1408,8 @@ class EbookDLPlugin(object):
                 self.config.data['search_timeout'] = float(e_so.get_text().strip() or 180)
                 self.config.data['unzip'] = c_unzip.get_active()
                 self.config.data['auto_accept'] = c_auto.get_active()
+                if self.conv_combo is not None:
+                    self.config.data['convert_format'] = CONVERT_FORMATS[self.conv_combo.get_active()]
                 self.config.save()
                 if self.entry_channel is not None:
                     self.entry_channel.set_text(self.config.get('channel'))
