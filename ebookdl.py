@@ -404,6 +404,10 @@ def move_to_target(src, target_dir, unzip):
     os.makedirs(target_dir, exist_ok=True)
     name = os.path.basename(src)
     low = name.lower()
+    # Quelle liegt bereits im Zielordner (z. B. DCC-Ordner == Zielordner)?
+    # Dann kollidiert die Datei nur mit sich selbst -> nicht umbenennen.
+    same_dir = os.path.normcase(os.path.abspath(os.path.dirname(src))) == \
+               os.path.normcase(os.path.abspath(target_dir))
     if unzip and _is_archive(name):
         if low.endswith(_SINGLE_COMPRESS_EXTS):
             try:
@@ -426,6 +430,9 @@ def move_to_target(src, target_dir, unzip):
                     return subdir, t('hinweis_extracted') % subdir
             except Exception:
                 pass  # Extraktion fehlgeschlagen -> Datei verschieben
+    if same_dir:
+        # Datei ist schon am richtigen Platz - keine Kollision mit sich selbst
+        return src, t('hinweis_saved') % src
     dst = unique_path(target_dir, name)
     shutil.move(src, dst)
     return dst, t('hinweis_saved') % dst

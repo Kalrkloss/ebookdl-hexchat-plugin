@@ -217,6 +217,23 @@ if shutil.which('7z') and subprocess.call(['7z', 'i'], stdout=subprocess.DEVNULL
         final_7z, _ = move_to_target(z7, target, True)
         check('move: 7z entpackt', os.path.exists(os.path.join(target, 'SevenBuch', 'inner7.txt')))
 
+# Quelle liegt bereits im Zielordner (DCC-Ordner == Zielordner):
+# darf NICHT zu "Name (1)" umbenannt werden
+own = os.path.join(target, 'EigenesBuch.epub')
+with open(own, 'wb') as fh:
+    fh.write(b'epub')
+final_own, _ = move_to_target(own, target, True)
+check('move: im Ziel -> gleicher Name', os.path.basename(final_own) == 'EigenesBuch.epub')
+check('move: im Ziel -> kein (1)', not os.path.exists(os.path.join(target, 'EigenesBuch (1).epub')))
+
+# Archiv, das bereits im Zielordner liegt, wird trotzdem entpackt
+ownzip = os.path.join(target, 'EigenesArchiv.zip')
+with zipfile.ZipFile(ownzip, 'w') as zf:
+    zf.writestr('buch.txt', 'inhalt')
+final_ownzip, _ = move_to_target(ownzip, target, True)
+check('move: archiv im Ziel -> entpackt',
+      os.path.exists(os.path.join(target, 'EigenesArchiv', 'buch.txt')))
+
 # Datei verschieben + Kollision
 f1 = os.path.join(TMP, 'plain.pdf')
 with open(f1, 'wb') as fh:
