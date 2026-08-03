@@ -36,6 +36,10 @@ Plugin standardmäßig eingestellt und anpassbar.
   von Ergebnissen sind alle Spalten sichtbar — lange Dateinamen und
   Ziel-Pfade werden mit `…` abgeschnitten statt die Spalten aufzuziehen
   (die Datei-Spalte lässt sich weiterhin per Maus anpassen)
+- **E-Book-Filter**: Standardmäßig werden in den Treffern nur E-Books und
+  Archive angezeigt — Cover-Bilder, OPF-, NFO- und ähnliche Dateien
+  werden ausgeblendet (das Log zeigt, wie viele gefiltert wurden; die
+  Option lässt sich in den Einstellungen abschalten)
 - Warteschlange mit strikter Netiquette: eine Anfrage pro Pause-Intervall,
   begrenzte parallele Downloads, Timeouts
 - DCC-Zuordnung per Bot-Nick und Dateiname (mit FIFO-Fallback)
@@ -211,6 +215,7 @@ zeigt die aktive Sortierung.
 | Download-Timeout     | 300 s                       | Abbruch, wenn kein Empfang beginnt                    |
 | Such-Timeout         | 180 s                       | Abbruch der Suche ohne Ergebnisdatei                  |
 | ZIP entpacken        | an                          | Archive im Zielordner automatisch entpacken           |
+| E-Book-Filter        | an                          | In den Treffern nur E-Books und Archive anzeigen (Cover-Bilder, OPF, NFO usw. ausblenden); das Log meldet, wie viele Dateien ausgeblendet wurden |
 | Konvertierung        | aus                         | Nach dem Download automatisch nach **EPUB**, **MOBI** oder **PDF** konvertieren (Calibre). Ist `ebook-convert` nicht installiert, ist die Auswahl ausgegraut und ein Hinweis erscheint (`sudo apt install calibre`). Konvertierung läuft nach dem Verschieben; Fehlschläge lassen die Originaldatei unangetastet. |
 
 ---

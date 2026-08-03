@@ -486,6 +486,32 @@ check('convert: calibre_available nein',
 same = ebookdl.convert_ebook(lit_file, 'lit', ebook_convert='/nonexistent/ebook-convert')
 check('convert: gleiches format', same == lit_file)
 
+# --- 12. Filter: Nicht-E-Book-Dateien ausblenden ------------------------------
+check('filter: default an', ebookdl.DEFAULT_CONFIG['filter_non_ebooks'] is True)
+check('filter: is_book ebook', ebookdl.is_book_file('Buch.epub')
+      and ebookdl.is_book_file('B.lit') and ebookdl.is_book_file('C.PDF'))
+check('filter: is_book archiv', ebookdl.is_book_file('D.rar')
+      and ebookdl.is_book_file('E.zip') and ebookdl.is_book_file('F.7z')
+      and ebookdl.is_book_file('G.tar.gz'))
+check('filter: is_book nein', not ebookdl.is_book_file('H.opf')
+      and not ebookdl.is_book_file('I.jpg') and not ebookdl.is_book_file('J.png')
+      and not ebookdl.is_book_file('K.nfo') and not ebookdl.is_book_file('L.jpeg')
+      and not ebookdl.is_book_file('M.gif') and not ebookdl.is_book_file('N.sfv'))
+
+mix = [
+    {'filename': 'Buch 1.epub', 'request': '!a 1'},
+    {'filename': 'Cover.jpg', 'request': '!a 2'},
+    {'filename': 'Buch 2.rar', 'request': '!a 3'},
+    {'filename': 'Meta.opf', 'request': '!a 4'},
+    {'filename': 'Buch 3.lit', 'request': '!a 5'},
+]
+flt = ebookdl.filter_results(mix, True)
+check('filter: nur ebooks+archive', [r['filename'] for r in flt]
+      == ['Buch 1.epub', 'Buch 2.rar', 'Buch 3.lit'])
+flt_off = ebookdl.filter_results(mix, False)
+check('filter: aus = alle', len(flt_off) == 5)
+check('filter: original unveraendert', len(mix) == 5)
+
 # --- Ende --------------------------------------------------------------------
 shutil.rmtree(TMP, ignore_errors=True)
 print('\n%d passed, %d failed' % (passed, failed))

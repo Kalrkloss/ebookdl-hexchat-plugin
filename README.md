@@ -36,6 +36,10 @@ plugin and adjustable.
   loaded, all columns stay visible — long filenames and target paths are
   truncated with `…` instead of stretching the columns (the file column
   can still be resized with the mouse)
+- **Ebook filter**: by default only ebooks and archives are shown in the
+  results — cover images, OPF, NFO and similar files are hidden (the log
+  shows how many were filtered; the option can be turned off in the
+  settings)
 - Queue with strict netiquette: one request per delay interval, limited
   parallel downloads, timeouts
 - DCC assignment by bot nick and filename (with FIFO fallback)
@@ -207,6 +211,7 @@ active sort.
 | Download timeout      | 300 s                      | Abort if no transfer starts                         |
 | Search timeout        | 180 s                      | Abort search without a result file                  |
 | Unzip                 | on                         | Automatically extract archives in the target folder |
+| Ebook filter          | on                         | Show only ebooks and archives in the results (hide cover images, OPF, NFO, etc.); the log reports how many files were hidden |
 | Conversion            | off                        | After download, automatically convert to **EPUB**, **MOBI** or **PDF** (Calibre). If `ebook-convert` is not installed, the selection is greyed out and a hint appears (`sudo apt install calibre`). Conversion runs after moving; failures leave the original file untouched. |
 
 ---

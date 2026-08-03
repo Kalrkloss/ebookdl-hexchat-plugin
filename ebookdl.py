@@ -104,6 +104,10 @@ _TR = {
                        'Converted to %s (Calibre)'),
     'log_convert_fail': ('Konvertierung fehlgeschlagen: %s',
                          'Conversion failed: %s'),
+    'set_filter': ('Nur E-Books und Archive anzeigen (Bilder, OPF, NFO usw. ausblenden)',
+                   'Show only ebooks and archives (hide images, OPF, NFO, etc.)'),
+    'log_filtered': ('%d Nicht-E-Book-Datei(en) ausgeblendet',
+                     '%d non-ebook file(s) hidden'),
     'btn_ok': ('OK', 'OK'),
     'btn_cancel_short': ('Abbrechen', 'Cancel'),
     # Log-/Status-Meldungen
@@ -510,6 +514,19 @@ def is_ebook_file(path):
     return (path or '').lower().endswith(EBOOK_EXTS)
 
 
+def is_book_file(filename):
+    """E-Book ODER Archiv? (alles andere gilt als Nicht-E-Book-Datei)"""
+    low = (filename or '').lower()
+    return low.endswith(EBOOK_EXTS) or low.endswith(ARCHIVE_EXTS)
+
+
+def filter_results(results, filter_on):
+    """Nicht-E-Book-Dateien (Bilder, OPF, NFO usw.) optional ausblenden."""
+    if not filter_on:
+        return list(results)
+    return [r for r in results if is_book_file(r.get('filename', ''))]
+
+
 def calibre_available():
     return shutil.which('ebook-convert') is not None
 
@@ -546,6 +563,7 @@ DEFAULT_CONFIG = {
     'unzip': True,            # ZIPs nach dem Download entpacken
     'auto_accept': True,      # DCC während Suche/Download automatisch annehmen
     'convert_format': '',     # '' | epub | mobi | pdf (Calibre-Konvertierung)
+    'filter_non_ebooks': True,  # Bilder/OPF/NFO usw. in der Trefferliste ausblenden
 }
 
 STATE_IDLE = 'idle'
@@ -1080,17 +1098,23 @@ class EbookDLPlugin(object):
         kind = msg[0]
         if kind == 'results':
             _, results, hinweis, path = msg
-            self.log(t('log_results_parsed') % (hinweis, len(results)))
+            shown = filter_results(results, self.config.get('filter_non_ebooks'))
+            hidden = len(results) - len(shown)
+            if hidden > 0:
+                self.log('%s | %s' % (t('log_results_parsed') % (hinweis, len(results)),
+                                      t('log_filtered') % hidden))
+            else:
+                self.log(t('log_results_parsed') % (hinweis, len(results)))
             self.results = list(results)
             if self.model is not None:
                 self.model.clear()
-                for r in results:
+                for r in shown:
                     self.model.append([False, r['filename'],
                                        r.get('filetype', filetype_of(r['filename'])),
                                        r['size'], r['request'], r['botnick'], '',
                                        float(r.get('size_bytes') or 0.0),
                                        r['filename'].lower()])
-            self.set_status(t('status_hits') % len(results))
+            self.set_status(t('status_hits') % len(shown))
         elif kind == 'moved':
             _, req, final, hinweis, error = msg
             item = self.downloads.get(req)
@@ -1158,7 +1182,7 @@ class EbookDLPlugin(object):
         # Spalten: 0 Check, 1 Datei, 2 Typ, 3 Größe, 4 Request, 5 Bot,
         #          6 Status, 7 Größe-Bytes (Sortierung), 8 Datei-Klein (Sortierung)
         self.model = Gtk.ListStore(bool, str, str, str, str, str, str, float, str)
-        for r in self.results:
+        for r in filter_results(self.results, self.config.get('filter_non_ebooks')):
             self.model.append([False, r['filename'],
                                r.get('filetype', filetype_of(r['filename'])),
                                r['size'], r['request'], r['botnick'], '',
@@ -1368,6 +1392,11 @@ class EbookDLPlugin(object):
         c_auto.set_active(bool(self.config.get('auto_accept')))
         box.pack_start(c_auto, False, False, 2)
 
+        c_filter = Gtk.CheckButton()
+        c_filter.set_label(t('set_filter'))
+        c_filter.set_active(bool(self.config.get('filter_non_ebooks')))
+        box.pack_start(c_filter, False, False, 2)
+
         # Konvertierung (Calibre)
         lbl_conv = Gtk.Label()
         lbl_conv.set_text(t('set_convert'))
@@ -1408,6 +1437,7 @@ class EbookDLPlugin(object):
                 self.config.data['search_timeout'] = float(e_so.get_text().strip() or 180)
                 self.config.data['unzip'] = c_unzip.get_active()
                 self.config.data['auto_accept'] = c_auto.get_active()
+                self.config.data['filter_non_ebooks'] = c_filter.get_active()
                 if self.conv_combo is not None:
                     self.config.data['convert_format'] = CONVERT_FORMATS[self.conv_combo.get_active()]
                 self.config.save()
