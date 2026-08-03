@@ -529,6 +529,31 @@ flt_off = ebookdl.filter_results(mix, False)
 check('filter: aus = alle', len(flt_off) == 5)
 check('filter: original unveraendert', len(mix) == 5)
 
+# --- 13. Kopieren aus der Ergebnisliste --------------------------------------
+class CopyModel(object):
+    def __init__(self, rows):
+        self.rows = rows
+    def get_iter(self, path):
+        try:
+            idx = int(path)
+            return idx if 0 <= idx < len(self.rows) else None
+        except (TypeError, ValueError):
+            return None
+    def get_value(self, it, col):
+        return self.rows[it][col]
+
+cm = CopyModel([
+    ['False', 'Buch 1.epub', 'EPUB'],
+    ['False', 'Buch 2.lit', 'LIT'],
+    ['False', 'Buch 3.pdf', 'PDF'],
+])
+check('copy: eine zeile',
+      ebookdl.copy_text_from_model(cm, ['0']) == 'Buch 1.epub')
+check('copy: mehrere zeilen',
+      ebookdl.copy_text_from_model(cm, ['0', '2']) == 'Buch 1.epub\nBuch 3.pdf')
+check('copy: leere auswahl', ebookdl.copy_text_from_model(cm, []) == '')
+check('copy: ungueltiger pfad', ebookdl.copy_text_from_model(cm, ['99']) == '')
+
 # --- Ende --------------------------------------------------------------------
 shutil.rmtree(TMP, ignore_errors=True)
 print('\n%d passed, %d failed' % (passed, failed))

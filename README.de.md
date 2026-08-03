@@ -32,6 +32,9 @@ Plugin standardmäßig eingestellt und anpassbar.
 - Trefferliste mit Größenangabe, Checkboxen und Status-Spalte
 - Sortierbare Liste: Klick auf die Kopfzeile sortiert nach Name
   (case-insensitive), Dateityp oder Größe (numerisch)
+- **Ergebnisse kopieren**: Eine oder mehrere Zeilen auswählen (Strg+Klick)
+  und **Strg+C** drücken — oder mit Rechtsklick **Kopieren** wählen — um
+  die Dateinamen in die Zwischenablage zu legen (einer pro Zeile)
 - **Feste Spaltenbreiten**: Beim Öffnen des Fensters und nach dem Einlesen
   von Ergebnissen sind alle Spalten sichtbar — lange Dateinamen und
   Ziel-Pfade werden mit `…` abgeschnitten statt die Spalten aufzuziehen

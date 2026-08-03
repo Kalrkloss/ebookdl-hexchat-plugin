@@ -108,6 +108,8 @@ _TR = {
                    'Show only ebooks and archives (hide images, OPF, NFO, etc.)'),
     'log_filtered': ('%d Nicht-E-Book-Datei(en) ausgeblendet',
                      '%d non-ebook file(s) hidden'),
+    'menu_copy': ('Kopieren', 'Copy'),
+    'log_copied': ('%d Zeile(n) kopiert', '%d row(s) copied'),
     'btn_ok': ('OK', 'OK'),
     'btn_cancel_short': ('Abbrechen', 'Cancel'),
     # Log-/Status-Meldungen
@@ -534,6 +536,16 @@ def filter_results(results, filter_on):
     return [r for r in results if is_book_file(r.get('filename', ''))]
 
 
+def copy_text_from_model(model, paths):
+    """Dateinamen der ausgewählten Zeilen (Spalte 1) als Text, eine pro Zeile."""
+    lines = []
+    for path in paths:
+        it = model.get_iter(path)
+        if it is not None:
+            lines.append(model.get_value(it, 1) or '')
+    return '\n'.join(lines)
+
+
 def calibre_available():
     return shutil.which('ebook-convert') is not None
 
@@ -643,6 +655,10 @@ class EbookDLPlugin(object):
         self.label_status = None
         self.conv_combo = None
         self.conv_hint = None
+        self.tree = None
+        self._copy_win = None
+        self._copy_entry = None
+        self._ctx_menu = None
 
         self.timer = hexchat.hook_timer(1000, self.on_timer)
         hexchat.hook_print('DCC RECV Connect', self.on_dcc_connect)
@@ -1199,6 +1215,10 @@ class EbookDLPlugin(object):
         tree.set_model(self.model)
         tree.set_rules_hint(True)
         tree.set_headers_visible(True)
+        tree.get_selection().set_mode(Gtk.SelectionMode.MULTIPLE)  # Mehrfach-Kopieren
+        tree.connect('key-press-event', self.on_tree_keypress)
+        tree.connect('button-press-event', self.on_tree_button)
+        self.tree = tree
         rend_toggle = Gtk.CellRendererToggle()
         rend_toggle.set_property('activatable', True)
         rend_toggle.connect('toggled', self.on_toggle)
@@ -1307,6 +1327,59 @@ class EbookDLPlugin(object):
         if it is not None:
             cur = self.model.get_value(it, 0)
             self.model.set_value(it, 0, not cur)
+
+    # -- Kopieren aus der Ergebnisliste --------------------------------------
+
+    def _ensure_copy_widget(self):
+        """Unsichtbares Entry als Clipboard-Besitzer (Gtk2-Typelib: kein
+        Gdk.Atom erzeugbar -> copy_clipboard() auf realisiertem Entry)."""
+        if self._copy_entry is None:
+            self._copy_win = self.Gtk.Window(type=self.Gtk.WindowType.POPUP)
+            self._copy_win.set_default_size(1, 1)
+            self._copy_entry = self.Gtk.Entry()
+            self._copy_win.add(self._copy_entry)
+            self._copy_win.realize()
+
+    def copy_selection(self):
+        """Ausgewählte Dateinamen (Spalte 1) in die Zwischenablage kopieren."""
+        if self.model is None or self.tree is None:
+            return
+        # Typelib: get_selected_rows() ohne Argument (Model ist OUT-Parameter)
+        paths = self.tree.get_selection().get_selected_rows()[1]
+        text = copy_text_from_model(self.model, paths)
+        if not text:
+            return
+        self._ensure_copy_widget()
+        self._copy_entry.set_text(text)
+        self._copy_entry.select_region(0, -1)
+        self._copy_entry.copy_clipboard()
+        self.log(t('log_copied') % len(text.split('\n')))
+
+    def on_tree_keypress(self, widget, event):
+        # Strg+C -> Auswahl kopieren (X11 ControlMask = 4)
+        if event.keyval in (99, 67) and event.state & 4:
+            self.copy_selection()
+            return True
+        return False
+
+    def on_tree_button(self, widget, event):
+        # Rechtsklick -> Kontextmenü mit "Kopieren"
+        if event.button == 3:
+            path = widget.get_path_at_pos(int(event.x), int(event.y))
+            if path:
+                sel = widget.get_selection()
+                sel.unselect_all()
+                sel.select_path(path[0])
+            menu = self.Gtk.Menu()
+            mi = self.Gtk.MenuItem()
+            mi.set_label(t('menu_copy'))
+            mi.connect('activate', lambda *a: self.copy_selection())
+            menu.append(mi)
+            menu.show_all()
+            menu.popup(None, None, None, event.button, event.time)
+            self._ctx_menu = menu  # Referenz halten (GC-Schutz)
+            return True
+        return False
 
     def set_all_checked(self, value):
         if self.model is None:
