@@ -659,6 +659,61 @@ for m in msgs:
 check('seq: liste gefuellt', len(p.results) == 2)
 check('seq: model befuellt', len(p.model.rows) == 2)
 
+# --- 16. Live-Filter (Filterzeile unter der Suche) ---------------------------
+check('filter2: leer = alle', len(ebookdl.filter_by_text(mix, '')) == 5)
+check('filter2: begriff',
+      [r['filename'] for r in ebookdl.filter_by_text(mix, 'Buch')]
+      == ['Buch 1.epub', 'Buch 2.rar', 'Buch 3.lit'])
+check('filter2: case-insensitiv', len(ebookdl.filter_by_text(mix, 'bUcH')) == 3)
+check('filter2: kein treffer', ebookdl.filter_by_text(mix, 'xyz') == [])
+
+class FilterEntry(object):
+    def __init__(self, text):
+        self._text = text
+    def get_text(self):
+        return self._text
+
+p = make_seq_plugin()   # 2 markierte Zeilen
+p.results = [
+    {'filename': 'Buch 1.epub', 'request': '!a 111', 'size': '1MB', 'botnick': 'artemis_serv'},
+    {'filename': 'Buch 2.lit', 'request': '!b 222', 'size': '2MB', 'botnick': 'bookz_serv'},
+]
+p.checked = {'!a 111': True, '!b 222': True}
+p.entry_filter = FilterEntry('')
+p._rebuild_model()
+check('filter2: ohne begriff alle', len(p.model.rows) == 2)
+p.entry_filter = FilterEntry('Buch 1')
+p._rebuild_model()
+check('filter2: rebuild filtert',
+      len(p.model.rows) == 1 and p.model.rows[0][1] == 'Buch 1.epub')
+check('filter2: checkbox erhalten', p.model.rows[0][0] is True)
+p.entry_filter = FilterEntry('')
+p._rebuild_model()
+check('filter2: reset -> alle', len(p.model.rows) == 2)
+check('filter2: markierung nach reset',
+      all(p.model.rows[i][0] is True for i in range(2)))
+# on_toggle pflegt self.checked
+p.on_toggle(None, '0')
+check('filter2: toggle pflegt checked', p.checked['!a 111'] is False)
+p.entry_filter = FilterEntry('Buch 1')
+p._rebuild_model()
+check('filter2: toggle wirkt im model', p.model.rows[0][0] is False)
+p.entry_filter = FilterEntry('')
+p._rebuild_model()
+check('filter2: markierungen ueberleben filter',
+      p.model.rows[0][0] is False and p.model.rows[1][0] is True)
+# E-Book-Filter + Text-Filter kombiniert
+p.config.data['filter_non_ebooks'] = True
+p.results = [{'filename': 'Cover.jpg', 'request': '!x 1', 'size': '1KB', 'botnick': 'b'},
+             {'filename': 'Buch.epub', 'request': '!x 2', 'size': '1MB', 'botnick': 'b'}]
+p.entry_filter = FilterEntry('cover')
+p._rebuild_model()
+check('filter2: kombi (jpg weg, cover-filter leer)', len(p.model.rows) == 0)
+p.entry_filter = FilterEntry('')
+p._rebuild_model()
+check('filter2: kombi ohne begriff', len(p.model.rows) == 1
+      and p.model.rows[0][1] == 'Buch.epub')
+
 # --- Ende --------------------------------------------------------------------
 shutil.rmtree(TMP, ignore_errors=True)
 print('\n%d passed, %d failed' % (passed, failed))

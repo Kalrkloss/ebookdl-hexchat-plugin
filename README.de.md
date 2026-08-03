@@ -35,6 +35,10 @@ Plugin standardmäßig eingestellt und anpassbar.
 - **Ergebnisse kopieren**: Eine oder mehrere Zeilen auswählen (Strg+Klick)
   und **Strg+C** drücken — oder mit Rechtsklick kopieren — um die
   Dateinamen in die Zwischenablage zu legen (einer pro Zeile)
+- **Live-Filter**: Ein Filterfeld unter der Suchzeile blendet die
+  Trefferliste während der Eingabe ein (case-insensitiv auf den
+  Dateinamen); Leeren stellt alle Treffer wieder her — Markierungen
+  überleben das Filtern
 - **Feste Spaltenbreiten**: Beim Öffnen des Fensters und nach dem Einlesen
   von Ergebnissen sind alle Spalten sichtbar — lange Dateinamen und
   Ziel-Pfade werden mit `…` abgeschnitten statt die Spalten aufzuziehen

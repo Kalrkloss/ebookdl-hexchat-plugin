@@ -35,6 +35,9 @@ plugin and adjustable.
 - **Copy results**: select one or more rows (Ctrl+click) and press
   **Ctrl+C** — or right-click to copy the selected filenames to the
   clipboard (one per line)
+- **Live filter**: a filter field below the search row narrows the hit
+  list while you type (case-insensitive, on the filename); clearing it
+  restores all hits — checkbox selections survive the filtering
 - **Fixed column widths**: when the window opens and after results are
   loaded, all columns stay visible — long filenames and target paths are
   truncated with `…` instead of stretching the columns (the file column

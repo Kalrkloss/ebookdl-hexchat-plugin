@@ -66,6 +66,7 @@ _TR = {
     'win_title_settings': ('EbookDL - Einstellungen', 'EbookDL - Settings'),
     'lbl_channel': ('Kanal:', 'Channel:'),
     'lbl_search': ('Suche:', 'Search:'),
+    'lbl_filter': ('Filter:', 'Filter:'),
     'btn_search': ('Suche starten', 'Start search'),
     'col_download': ('Download', 'Download'),
     'col_file': ('Datei', 'File'),
@@ -535,6 +536,14 @@ def filter_results(results, filter_on):
     return [r for r in results if is_book_file(r.get('filename', ''))]
 
 
+def filter_by_text(results, term):
+    """Live-Filter: nur Treffer, deren Dateiname den Begriff enthält."""
+    t = (term or '').strip().lower()
+    if not t:
+        return list(results)
+    return [r for r in results if t in r.get('filename', '').lower()]
+
+
 def copy_text_from_model(model, paths):
     """Dateinamen der ausgewählten Zeilen (Spalte 1) als Text, eine pro Zeile."""
     lines = []
@@ -644,11 +653,13 @@ class EbookDLPlugin(object):
 
         self.ui_queue = queue.Queue()   # Worker -> Haupt-Thread
         self.results = []               # geparste Treffer (unabhängig vom Fenster)
+        self.checked = {}               # request -> Checkbox (überlebt Filter)
         self.window = None
         self.settings_win = None
         self.model = None
         self.entry_search = None
         self.entry_channel = None
+        self.entry_filter = None
         self.log_buffer = None
         self.progress = None
         self.label_status = None
@@ -840,6 +851,7 @@ class EbookDLPlugin(object):
 
     def set_row_checked(self, request, checked):
         """Checkbox einer Zeile setzen (z. B. nach Download abwählen)."""
+        self.checked[request] = bool(checked)
         if self.model is None:
             return
         it = self.model.get_iter_first()
@@ -1133,13 +1145,7 @@ class EbookDLPlugin(object):
                 self.log(t('log_results_parsed') % (hinweis, len(results)))
             self.results = list(results)
             if self.model is not None:
-                self.model.clear()
-                for r in shown:
-                    self.model.append([False, r['filename'],
-                                       r.get('filetype', filetype_of(r['filename'])),
-                                       r['size'], r['request'], r['botnick'], '',
-                                       float(r.get('size_bytes') or 0.0),
-                                       r['filename'].lower()])
+                self._rebuild_model()
             self.set_status(t('status_hits') % len(shown))
         elif kind == 'moved':
             _, req, final, hinweis, error = msg
@@ -1204,16 +1210,22 @@ class EbookDLPlugin(object):
         head.pack_start(btn_search, False, False, 0)
         vbox.pack_start(head, False, False, 0)
 
+        # -- Filterzeile (wirkt direkt waehrend der Eingabe)
+        frow = Gtk.HBox(homogeneous=False, spacing=4)
+        lbl_f = Gtk.Label()
+        lbl_f.set_text(t('lbl_filter'))
+        self.entry_filter = Gtk.Entry()
+        self.entry_filter.set_width_chars(40)
+        self.entry_filter.connect('changed', lambda *a: self._rebuild_model())
+        frow.pack_start(lbl_f, False, False, 0)
+        frow.pack_start(self.entry_filter, True, True, 0)
+        vbox.pack_start(frow, False, False, 0)
+
         # -- Ergebnisliste
         # Spalten: 0 Check, 1 Datei, 2 Typ, 3 Größe, 4 Request, 5 Bot,
         #          6 Status, 7 Größe-Bytes (Sortierung), 8 Datei-Klein (Sortierung)
         self.model = Gtk.ListStore(bool, str, str, str, str, str, str, float, str)
-        for r in filter_results(self.results, self.config.get('filter_non_ebooks')):
-            self.model.append([False, r['filename'],
-                               r.get('filetype', filetype_of(r['filename'])),
-                               r['size'], r['request'], r['botnick'], '',
-                               float(r.get('size_bytes') or 0.0),
-                               r['filename'].lower()])
+        self._rebuild_model()
         tree = Gtk.TreeView()
         tree.set_model(self.model)
         tree.set_rules_hint(True)
@@ -1323,13 +1335,31 @@ class EbookDLPlugin(object):
         self.window.hide()
         return True  # Fenster nur verstecken, Plugin läuft weiter
 
+    def _rebuild_model(self):
+        """Liste neu aufbauen: E-Book-Filter + Live-Filter; Checkbox-Zustände
+        kommen aus self.checked (request -> bool) und überleben jeden Rebuild."""
+        if self.model is None:
+            return
+        term = self.entry_filter.get_text() if self.entry_filter is not None else ''
+        shown = filter_results(self.results, self.config.get('filter_non_ebooks'))
+        shown = filter_by_text(shown, term)
+        self.model.clear()
+        for r in shown:
+            self.model.append([self.checked.get(r['request'], False), r['filename'],
+                               r.get('filetype', filetype_of(r['filename'])),
+                               r['size'], r['request'], r['botnick'], '',
+                               float(r.get('size_bytes') or 0.0),
+                               r['filename'].lower()])
+
     def on_toggle(self, renderer, path):
         if self.model is None:
             return
         it = self.model.get_iter(path)
         if it is not None:
             cur = self.model.get_value(it, 0)
-            self.model.set_value(it, 0, not cur)
+            new = not cur
+            self.model.set_value(it, 0, new)
+            self.checked[self.model.get_value(it, 4)] = new
 
     # -- Kopieren aus der Ergebnisliste --------------------------------------
 
@@ -1378,11 +1408,13 @@ class EbookDLPlugin(object):
             return
         it = self.model.get_iter_first()
         while it is not None:
-            self.model.set_value(it, 0, value)
+            self.model.set_value(it, 0, bool(value))
+            self.checked[self.model.get_value(it, 4)] = bool(value)
             it = self.model.iter_next(it)
 
     def clear_results(self):
         self.results = []
+        self.checked = {}
         if self.model is not None:
             self.model.clear()
 
