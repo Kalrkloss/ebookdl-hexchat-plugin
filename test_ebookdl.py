@@ -554,6 +554,15 @@ check('copy: mehrere zeilen',
 check('copy: leere auswahl', ebookdl.copy_text_from_model(cm, []) == '')
 check('copy: ungueltiger pfad', ebookdl.copy_text_from_model(cm, ['99']) == '')
 
+# --- 14. Status-Uebersetzung vollstaendig ------------------------------------
+# Jede ST_-Konstante muss in der Anzeige-Tabelle stecken (sonst bleibt der
+# deutsche Wert stehen, z. B. 'wartet' statt 'waiting' in englischer UI)
+check('state: alle konstanten uebersetzt',
+      all(ebookdl.t_state(v) != v for v in (ebookdl.ST_WAIT, ebookdl.ST_SENT,
+                                            ebookdl.ST_RECV, ebookdl.ST_DONE,
+                                            ebookdl.ST_ERR, ebookdl.ST_TOUT,
+                                            ebookdl.ST_CANCEL)))
+
 # --- Ende --------------------------------------------------------------------
 shutil.rmtree(TMP, ignore_errors=True)
 print('\n%d passed, %d failed' % (passed, failed))

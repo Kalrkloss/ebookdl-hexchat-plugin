@@ -196,7 +196,7 @@ _TR = {
 
 # Statusanzeige der Tabellenzeilen (interne Werte bleiben unverändert)
 _STATE_DISPLAY = {
-    'wartend': ('wartend', 'waiting'),
+    'wartet': ('wartet', 'waiting'),
     'angefragt': ('angefragt', 'requested'),
     'empfange': ('empfange', 'receiving'),
     'fertig': ('fertig', 'done'),
