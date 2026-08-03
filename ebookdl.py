@@ -787,8 +787,13 @@ class EbookDLPlugin(object):
         added = 0
         for row in rows:
             req = row['request']
-            if req in self.downloads:
+            item = self.downloads.get(req)
+            # Aktiv laufende/wartende Anfragen nicht doppelt einreihen
+            if item is not None and item['state'] in (ST_WAIT, ST_SENT, ST_RECV):
                 continue
+            # cancelled/Fehler/Timeout: neu einreihen (cancelled ist nur ein
+            # Hinweis in der Status-Spalte und darf einen erneuten Start
+            # nicht blockieren)
             self.downloads[req] = {
                 'request': req,
                 'filename': row['filename'],

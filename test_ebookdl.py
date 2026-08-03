@@ -563,6 +563,102 @@ check('state: alle konstanten uebersetzt',
                                             ebookdl.ST_ERR, ebookdl.ST_TOUT,
                                             ebookdl.ST_CANCEL)))
 
+# --- 15. Cancel + erneuter Start + Suche (User-Sequenz) ----------------------
+class SeqModel(object):
+    def __init__(self, rows):
+        self.rows = rows
+    def get_iter_first(self):
+        return 0 if self.rows else None
+    def iter_next(self, it):
+        nxt = it + 1
+        return nxt if nxt < len(self.rows) else None
+    def get_value(self, it, col):
+        return self.rows[it][col]
+    def get_iter(self, path):
+        try:
+            idx = int(path)
+            return idx if 0 <= idx < len(self.rows) else None
+        except (TypeError, ValueError):
+            return None
+    def set_value(self, it, col, val):
+        self.rows[it][col] = val
+    def clear(self):
+        self.rows = []
+    def append(self, row):
+        self.rows.append(row)
+
+def make_seq_plugin():
+    p = ebookdl.EbookDLPlugin()
+    p.model = SeqModel([
+        ['True', 'Buch 1.epub', 'EPUB', '1MB', '!a 111', 'artemis_serv', '',
+         1048576.0, 'buch 1.epub'],
+        ['True', 'Buch 2.lit', 'LIT', '2MB', '!b 222', 'bookz_serv', '',
+         2097152.0, 'buch 2.lit'],
+    ])
+    p.tree = None
+    return p
+
+# 1) Markierte Dateien einreihen -> cancel -> erneut starten: ALLE werden
+#    wieder eingereiht (cancelled ist nur ein Hinweis)
+p = make_seq_plugin()
+p.start_downloads()
+check('seq: 2 eingereiht', len(p.queue) == 2)
+p.cancel_queue()
+check('seq: cancelled', all(p.downloads[r]['state'] == ebookdl.ST_CANCEL
+                            for r in p.downloads))
+check('seq: queue leer', p.queue == [])
+p.start_downloads()   # erneuter Start mit weiterhin markierten Zeilen
+check('seq: erneut 2 eingereiht', len(p.queue) == 2)
+check('seq: status zurueck auf waiting',
+      all(p.downloads[r]['state'] == ebookdl.ST_WAIT for r in p.downloads))
+check('seq: statuszelle waiting',
+      all(p.model.rows[i][6] == 'waiting' for i in range(2)))
+# Markierung entfernen + erneut markieren (on_toggle): Status bleibt
+# 'cancelled' als Hinweis stehen, bis der naechste Start ihn ueberschreibt
+p.cancel_queue()
+p.on_toggle(None, '0')
+p.on_toggle(None, '0')
+check('seq: cancelled bleibt hinweis', p.model.rows[0][6] == 'cancelled'
+      and p.downloads['!a 111']['state'] == ebookdl.ST_CANCEL)
+p.start_downloads()
+check('seq: re-toggle + start -> wieder drin', len(p.queue) == 2)
+check('seq: status wieder waiting', p.model.rows[0][6] == 'waiting')
+
+# 2) Nach cancel + NEUER Suche: Ergebnis-Datei muss eingelesen werden
+p = make_seq_plugin()
+p.start_downloads()
+p.cancel_queue()
+p.start_search('asimov')
+check('seq: suche laeuft', p.state == ebookdl.STATE_SEARCHING)
+# Ergebnis-ZIP anlegen (wie vom Bot); fester Timestamp, weil Abschnitt 5
+# time.time gefaked hat (ZIP braucht Zeit >= 1980)
+res_zip = os.path.join(TMP, 'seq', 'SearchBot_results_for_asimov.txt.zip')
+os.makedirs(os.path.dirname(res_zip), exist_ok=True)
+_zipinfo = zipfile.ZipInfo('results.txt', (2024, 1, 1, 12, 0, 0))
+with zipfile.ZipFile(res_zip, 'w') as zf:
+    zf.writestr(_zipinfo, '!artemis 1 | Asimov, Isaac - Foundation.epub ::INFO:: 1MB\n'
+                          '!bookz 2 | Asimov, Isaac - Robot.epub ::INFO:: 2MB\n')
+# DCC-Events simulieren (word[] = erstes Argument zuerst, Python-Bridge)
+p.on_dcc_connect(['Search', 'host:1234', 'SearchBot_results_for_asimov.txt.zip'],
+                 None, None)
+check('seq: pending_result gesetzt', p.pending_result is not None)
+p.on_dcc_complete(['SearchBot_results_for_asimov.txt.zip', res_zip, 'Search'],
+                  None, None)
+realtime.sleep(1.0)  # Parser-Thread
+msgs = []
+while True:
+    try:
+        msgs.append(p.ui_queue.get_nowait())
+    except Exception:
+        break
+results_msg = [m for m in msgs if m[0] == 'results']
+check('seq: ergebnis eingelesen', len(results_msg) == 1
+      and len(results_msg[0][1]) == 2)
+for m in msgs:
+    p.handle_ui_msg(m)   # wie der 1s-Timer in HexChat
+check('seq: liste gefuellt', len(p.results) == 2)
+check('seq: model befuellt', len(p.model.rows) == 2)
+
 # --- Ende --------------------------------------------------------------------
 shutil.rmtree(TMP, ignore_errors=True)
 print('\n%d passed, %d failed' % (passed, failed))
