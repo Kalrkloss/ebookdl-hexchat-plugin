@@ -33,8 +33,8 @@ plugin and adjustable.
 - Sortable list: clicking a column header sorts by name
   (case-insensitive), file type or size (numeric)
 - **Copy results**: select one or more rows (Ctrl+click) and press
-  **Ctrl+C** — or right-click a row and choose **Copy** — to copy the
-  filenames to the clipboard (one per line)
+  **Ctrl+C** — or right-click to copy the selected filenames to the
+  clipboard (one per line)
 - **Fixed column widths**: when the window opens and after results are
   loaded, all columns stay visible — long filenames and target paths are
   truncated with `…` instead of stretching the columns (the file column

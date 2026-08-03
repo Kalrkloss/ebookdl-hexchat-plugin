@@ -108,7 +108,6 @@ _TR = {
                    'Show only ebooks and archives (hide images, OPF, NFO, etc.)'),
     'log_filtered': ('%d Nicht-E-Book-Datei(en) ausgeblendet',
                      '%d non-ebook file(s) hidden'),
-    'menu_copy': ('Kopieren', 'Copy'),
     'log_copied': ('%d Zeile(n) kopiert', '%d row(s) copied'),
     'btn_ok': ('OK', 'OK'),
     'btn_cancel_short': ('Abbrechen', 'Cancel'),
@@ -658,7 +657,6 @@ class EbookDLPlugin(object):
         self.tree = None
         self._copy_win = None
         self._copy_entry = None
-        self._ctx_menu = None
 
         self.timer = hexchat.hook_timer(1000, self.on_timer)
         hexchat.hook_print('DCC RECV Connect', self.on_dcc_connect)
@@ -1363,21 +1361,10 @@ class EbookDLPlugin(object):
         return False
 
     def on_tree_button(self, widget, event):
-        # Rechtsklick -> Kontextmenü mit "Kopieren"
+        # Rechtsklick -> Auswahl sofort kopieren (Kontextmenue: popup fehlt
+        # im Gtk2-Typelib; get_path_at_pos liefert immer None)
         if event.button == 3:
-            path = widget.get_path_at_pos(int(event.x), int(event.y))
-            if path:
-                sel = widget.get_selection()
-                sel.unselect_all()
-                sel.select_path(path[0])
-            menu = self.Gtk.Menu()
-            mi = self.Gtk.MenuItem()
-            mi.set_label(t('menu_copy'))
-            mi.connect('activate', lambda *a: self.copy_selection())
-            menu.append(mi)
-            menu.show_all()
-            menu.popup(None, None, None, event.button, event.time)
-            self._ctx_menu = menu  # Referenz halten (GC-Schutz)
+            self.copy_selection()
             return True
         return False
 
